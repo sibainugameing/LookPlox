@@ -271,7 +271,8 @@ input::placeholder {
 
 .remove-root:disabled,
 .add-folder:disabled,
-.start-indexing:disabled {
+.start-indexing:disabled,
+.cancel-indexing:disabled {
   cursor: default;
   opacity: 0.42;
 }
@@ -368,6 +369,21 @@ input::placeholder {
   margin-top: 10px;
   font-size: 11px;
   color: rgba(60, 60, 64, 0.50);
+}
+
+.cancel-indexing {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(60, 60, 65, 0.07);
+  color: rgba(35, 35, 38, 0.72);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cancel-indexing:hover:not(:disabled) {
+  background: rgba(60, 60, 65, 0.11);
 }
 
 @keyframes indexing-slide {
