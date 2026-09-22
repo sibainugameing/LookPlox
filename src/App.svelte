@@ -38,8 +38,14 @@
 
   const windowHandle = getCurrentWindow();
 
-  async function resizeSearchWindow() {
-    await windowHandle.setSize(new LogicalSize(760, 125));
+  async function resizeSearchWindow(resultCount = 0) {
+    const visibleResults = Math.min(Math.max(resultCount, 1), 8);
+    const height =
+      resultCount === 0
+        ? 104
+        : 12 + 68 + 10 + 16 + visibleResults * 56 + 10;
+
+    await windowHandle.setSize(new LogicalSize(760, height));
   }
 
   async function resizeSetupWindow() {
@@ -200,6 +206,7 @@
     query = "";
     results = [];
     selected = 0;
+    await resizeSearchWindow(0);
     await windowHandle.hide();
   }
 
@@ -210,6 +217,7 @@
     if (!value) {
       results = [];
       selected = 0;
+      await resizeSearchWindow(0);
       return;
     }
 
@@ -224,6 +232,7 @@
       if (currentRequest === requestId) {
         results = nextResults;
         selected = Math.min(selected, Math.max(nextResults.length - 1, 0));
+        await resizeSearchWindow(nextResults.length);
       }
     } catch (error) {
       console.error("LookPlox search failed:", error);
@@ -289,7 +298,7 @@
           await windowHandle.center();
           await windowHandle.setFocus();
         } else {
-          await resizeSearchWindow();
+          await resizeSearchWindow(0);
         }
 
         unlistenFocus = await windowHandle.onFocusChanged(async ({ payload }) => {
@@ -301,6 +310,7 @@
           }
 
           if (!setupMode) {
+            await resizeSearchWindow(results.length);
             await tick();
             input?.focus();
             input?.select();
