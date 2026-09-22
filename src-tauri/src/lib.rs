@@ -11,6 +11,7 @@ use tantivy::schema::{
 use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, Term, TantivyDocument};
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use walkdir::WalkDir;
 
 pub struct AppState {
@@ -376,9 +377,39 @@ fn setup_app(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+    .plugin(
+      tauri_plugin_global_shortcut::Builder::new()
+        .with_handler(move |app, shortcut, event| {
+          let hotkey = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+
+          if shortcut == &hotkey && event.state() == ShortcutState::Pressed {
+            if let Some(window) = app.get_webview_window("main") {
+              match window.is_visible() {
+                Ok(true) => {
+                  let _ = window.hide();
+                }
+                Ok(false) => {
+                  let _ = window.show();
+                  let _ = window.set_focus();
+                }
+                Err(error) => {
+                  eprintln!("LookPlox failed to check window visibility: {error}");
+                }
+              }
+            }
+          }
+        })
+        .build(),
+    )
     .setup(|app| {
       setup_app(app.handle())?;
+
+      #[cfg(desktop)]
+      {
+        let hotkey = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+        app.global_shortcut().register(hotkey)?;
+      }
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![search_files, open_path])
