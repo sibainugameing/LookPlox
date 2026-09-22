@@ -44,35 +44,44 @@
     await windowHandle.setSize(new LogicalSize(760, 480));
   }
 
-  function normalizePath(path: string) {
-    return path.replace(/[\\/]+$/, "");
+  function comparablePath(path: string) {
+    const isWindowsDriveRoot = /^[A-Za-z]:[\\/]?$/.test(path);
+    if (isWindowsDriveRoot) {
+      return path.slice(0, 2) + (path.includes("\\") ? "\\" : "/");
+    }
+
+    const trimmed = path.replace(/[\\/]+$/, "");
+    return trimmed || path;
+  }
+
+  function isSameOrChildPath(candidate: string, parent: string) {
+    const candidatePath = comparablePath(candidate);
+    const parentPath = comparablePath(parent);
+
+    if (candidatePath === parentPath) {
+      return true;
+    }
+
+    const separator = parentPath.endsWith("\\") || parentPath.endsWith("/")
+      ? ""
+      : parentPath.includes("\\")
+        ? "\\"
+        : "/";
+
+    return candidatePath.startsWith(parentPath + separator);
   }
 
   function addRootCandidate(candidate: string) {
-    const normalized = normalizePath(candidate);
-    if (!normalized) {
+    if (!candidate) {
       return;
     }
 
-    const separator = normalized.includes("\\") ? "\\" : "/";
-    const covered = roots.some((root) => {
-      const existing = normalizePath(root);
-      return (
-        normalized === existing ||
-        normalized.startsWith(existing + separator)
-      );
-    });
+    const covered = roots.some((root) => isSameOrChildPath(candidate, root));
 
     if (!covered) {
       roots = [
-        ...roots.filter((root) => {
-          const existing = normalizePath(root);
-          return !(
-            existing.startsWith(normalized + separator) &&
-            existing !== normalized
-          );
-        }),
-        normalized,
+        ...roots.filter((root) => !isSameOrChildPath(root, candidate)),
+        candidate,
       ];
     }
   }
@@ -147,22 +156,6 @@
       indexing = false;
       setupError = String(error);
     }
-  }
-
-  async function showSearchWindow() {
-    if (setupMode) {
-      await windowHandle.show();
-      await windowHandle.center();
-      await windowHandle.setFocus();
-      return;
-    }
-
-    await windowHandle.show();
-    await windowHandle.center();
-    await windowHandle.setFocus();
-    await tick();
-    input?.focus();
-    input?.select();
   }
 
   async function hideSearchWindow() {
