@@ -8,6 +8,7 @@
   type SearchResult = {
     name: string;
     path: string;
+    is_dir: boolean;
   };
 
   type SetupState = {
@@ -532,7 +533,19 @@
             type="button"
             onclick={() => openResult(result)}
           >
-            <span class="icon">□</span>
+            <span class:folder-icon={result.is_dir} class:file-icon={!result.is_dir} class="icon" aria-hidden="true">
+              {#if result.is_dir}
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+              {:else}
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M7 3.75h7.2L18.5 8v11.25H7A1.25 1.25 0 0 1 5.75 18V5A1.25 1.25 0 0 1 7 3.75Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M14 3.75V8h4.25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+              {/if}
+            </span>
             <span class="result-text">
               <span class="name">{result.name}</span>
               <span class="path">{result.path}</span>
