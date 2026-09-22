@@ -706,7 +706,9 @@ fn add_index_root(
       .lock()
       .map_err(|_| "Index root state is unavailable.".to_string())?;
 
-    if active.iter().any(|item| item == &root_path) {
+    if active.iter().any(|item| {
+      root_path.starts_with(item) || item.starts_with(&root_path)
+    }) {
       return Ok(active
         .iter()
         .map(|item| item.to_string_lossy().into_owned())
@@ -732,6 +734,7 @@ fn add_index_root(
   let active_roots = Arc::clone(&state.active_roots);
   let watched_roots = Arc::clone(&state.watched_roots);
   let root_for_scan = root_path.clone();
+  let app_for_worker = app.clone();
 
   std::thread::spawn(move || {
     let result = incremental_scan(
@@ -744,6 +747,12 @@ fn add_index_root(
       if let Ok(mut active) = active_roots.lock() {
         active.retain(|item| item != &root_for_scan);
       }
+
+      let _ = read_roots(&app_for_worker).and_then(|mut roots| {
+        roots.retain(|item| item != &root_for_scan);
+        save_roots(&app, &roots)
+      });
+
       if let Ok(mut status_error) = indexing.error.lock() {
         *status_error = Some(error);
       }
@@ -866,7 +875,10 @@ pub fn run() {
         let engine = Arc::new(SearchEngine::open(&index_dir)?);
 
         let roots = read_roots(app.handle())?;
-        let is_initialized = marker_path(app.handle())?.exists() && !roots.is_empty();
+        let is_initialized =
+          marker_path(app.handle())?.exists()
+            && !roots.is_empty()
+            && is_index_current(app.handle())?;
 
         #[cfg(target_os = "macos")]
         if let Some(window) = app.get_webview_window("main") {
