@@ -424,6 +424,7 @@ fn start_indexing(
     return Err("Indexing is already running.".into());
   }
 
+  state.initialized.store(false, Ordering::SeqCst);
   state.indexing.indexed.store(0, Ordering::Relaxed);
   if let Ok(mut error) = state.indexing.error.lock() {
     *error = None;
