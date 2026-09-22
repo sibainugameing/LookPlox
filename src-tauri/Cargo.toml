@@ -1,0 +1,22 @@
+[package]
+name = "lookplox"
+version = "0.1.0"
+description = "Fast local file search for macOS, with Windows in mind."
+authors = ["sibainugameing"]
+edition = "2021"
+
+[lib]
+name = "lookplox_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+tantivy = "0.26"
+notify = "8"
+walkdir = "2"
+dirs = "6"
