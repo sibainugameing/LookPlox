@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::doc;
-use tantivy::schema::{Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};
+use tantivy::schema::{\n  Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,\n};
 use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, Term, TantivyDocument};
 use tauri::{AppHandle, Manager, State};
