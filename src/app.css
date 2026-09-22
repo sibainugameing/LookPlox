@@ -184,3 +184,18 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
   cursor: default;
   opacity: 0.42;
 }
+
+
+.icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.folder-icon {
+  color: rgba(55, 92, 130, 0.78);
+}
+
+.file-icon {
+  color: rgba(40, 40, 44, 0.60);
+}
