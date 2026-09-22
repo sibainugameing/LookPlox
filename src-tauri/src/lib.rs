@@ -1,5 +1,6 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use rusqlite::{params, Connection};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -27,6 +28,7 @@ use window_vibrancy::{
 
 pub struct AppState {
   pub engine: Arc<SearchEngine>,
+  pub settings_db: Arc<Mutex<Connection>>,
   pub indexing: Arc<IndexingState>,
   pub initialized: Arc<AtomicBool>,
   pub active_roots: Arc<Mutex<Vec<PathBuf>>>,
@@ -45,6 +47,117 @@ pub struct SearchResult {
   pub name: String,
   pub path: String,
   pub is_dir: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+  pub result_limit: usize,
+  pub show_paths: bool,
+  pub theme: String,
+  pub hide_on_blur: bool,
+}
+
+const DEFAULT_RESULT_LIMIT: usize = 12;
+const DEFAULT_SHOW_PATHS: bool = true;
+const DEFAULT_THEME: &str = "system";
+const DEFAULT_HIDE_ON_BLUR: bool = true;
+
+fn default_settings() -> AppSettings {
+  AppSettings {
+    result_limit: DEFAULT_RESULT_LIMIT,
+    show_paths: DEFAULT_SHOW_PATHS,
+    theme: DEFAULT_THEME.to_string(),
+    hide_on_blur: DEFAULT_HIDE_ON_BLUR,
+  }
+}
+
+fn validate_settings(settings: &AppSettings) -> Result<(), String> {
+  if ![6, 12, 24, 50].contains(&settings.result_limit) {
+    return Err("Invalid result limit.".into());
+  }
+
+  if settings.theme != "system" && settings.theme != "light" && settings.theme != "dark" {
+    return Err("Invalid theme.".into());
+  }
+
+  Ok(())
+}
+
+fn settings_db_path(app: &AppHandle) -> Result<PathBuf, String> {
+  app.path()
+    .app_data_dir()
+    .map(|dir| dir.join("settings.sqlite3"))
+    .map_err(|error| error.to_string())
+}
+
+fn open_settings_db(app: &AppHandle) -> Result<Connection, String> {
+  let path = settings_db_path(app)?;
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+  }
+
+  let connection = Connection::open(path).map_err(|error| error.to_string())?;
+
+  connection
+    .execute_batch(
+      "CREATE TABLE IF NOT EXISTS settings (
+         id INTEGER PRIMARY KEY CHECK (id = 1),
+         result_limit INTEGER NOT NULL,
+         show_paths INTEGER NOT NULL,
+         theme TEXT NOT NULL,
+         hide_on_blur INTEGER NOT NULL
+       );
+       INSERT OR IGNORE INTO settings (id, result_limit, show_paths, theme, hide_on_blur)
+       VALUES (1, 12, 1, 'system', 1);",
+    )
+    .map_err(|error| error.to_string())?;
+
+  Ok(connection)
+}
+
+fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
+  let settings = connection
+    .query_row(
+      "SELECT result_limit, show_paths, theme, hide_on_blur FROM settings WHERE id = 1",
+      [],
+      |row| {
+        Ok(AppSettings {
+          result_limit: row.get(0)?,
+          show_paths: row.get::<_, i64>(1)? != 0,
+          theme: row.get(2)?,
+          hide_on_blur: row.get::<_, i64>(3)? != 0,
+        })
+      },
+    )
+    .map_err(|error| error.to_string())?;
+
+  validate_settings(&settings)?;
+  Ok(settings)
+}
+
+fn write_settings(connection: &Connection, settings: &AppSettings) -> Result<(), String> {
+  validate_settings(settings)?;
+
+  connection
+    .execute(
+      "INSERT INTO settings (id, result_limit, show_paths, theme, hide_on_blur)
+       VALUES (1, ?1, ?2, ?3, ?4)
+       ON CONFLICT(id) DO UPDATE SET
+         result_limit = excluded.result_limit,
+         show_paths = excluded.show_paths,
+         theme = excluded.theme,
+         hide_on_blur = excluded.hide_on_blur",
+      params![
+        settings.result_limit as i64,
+        if settings.show_paths { 1i64 } else { 0i64 },
+        settings.theme,
+        if settings.hide_on_blur { 1i64 } else { 0i64 },
+      ],
+    )
+    .map_err(|error| error.to_string())?;
+
+  Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -672,6 +785,26 @@ fn watch_root_once(
 }
 
 #[tauri::command]
+fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+  let connection = state
+    .settings_db
+    .lock()
+    .map_err(|_| "Settings database is unavailable.".to_string())?;
+
+  read_settings(&connection)
+}
+
+#[tauri::command]
+fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+  let connection = state
+    .settings_db
+    .lock()
+    .map_err(|_| "Settings database is unavailable.".to_string())?;
+
+  write_settings(&connection, &settings)
+}
+
+#[tauri::command]
 fn get_setup_state(app: AppHandle) -> Result<SetupState, String> {
   let marker = marker_path(&app)?;
   let roots = read_roots(&app)?;
@@ -1036,6 +1169,8 @@ pub fn run() {
         let data_dir = app.path().app_data_dir()?;
         std::fs::create_dir_all(&data_dir)?;
 
+        let settings_db = Arc::new(Mutex::new(open_settings_db(app.handle())?));
+
         let index_dir = data_dir.join("index");
 
         if !is_index_current(app.handle())? && index_dir.exists() {
@@ -1077,6 +1212,7 @@ pub fn run() {
 
         app.manage(AppState {
           engine: Arc::clone(&engine),
+          settings_db: Arc::clone(&settings_db),
           indexing: Arc::clone(&indexing),
           initialized: Arc::clone(&initialized),
           active_roots: Arc::clone(&active_roots),
@@ -1104,6 +1240,8 @@ pub fn run() {
       }
     })
     .invoke_handler(tauri::generate_handler![
+      get_settings,
+      save_settings,
       get_setup_state,
       get_indexing_status,
       start_indexing,
