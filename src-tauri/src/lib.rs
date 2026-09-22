@@ -298,7 +298,7 @@ fn initial_scan(
         return Err("Indexing canceled.".into());
       }
 
-      if indexing.indexed.load(Ordering::Relaxed) % 512 == 0
+      if indexing.indexed.load(Ordering::Relaxed) % 5000 == 0
         && indexing.indexed.load(Ordering::Relaxed) != 0
       {
         engine.commit().map_err(|error| error.to_string())?;
