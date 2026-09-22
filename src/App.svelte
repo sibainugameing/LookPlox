@@ -31,8 +31,10 @@
   let setupMode = true;
   let roots: string[] = [];
   let indexing = false;
+  let cancelRequested = false;
   let indexedCount = 0;
   let setupError = "";
+  let indexPoll: number | undefined;
 
   const windowHandle = getCurrentWindow();
 
@@ -119,26 +121,37 @@
     }
 
     indexing = true;
+    cancelRequested = false;
     indexedCount = 0;
 
     try {
       await invoke("start_indexing", { roots });
 
-      const poll = window.setInterval(async () => {
+      if (indexPoll !== undefined) {
+        window.clearInterval(indexPoll);
+      }
+
+      indexPoll = window.setInterval(async () => {
         try {
           const status = await invoke<IndexingStatus>("get_indexing_status");
           indexedCount = status.indexed;
 
           if (!status.running) {
-            window.clearInterval(poll);
+            window.clearInterval(indexPoll);
+            indexPoll = undefined;
+            indexing = false;
+
+            if (cancelRequested || status.error === "Indexing canceled.") {
+              cancelRequested = false;
+              setupError = "";
+              return;
+            }
 
             if (status.error) {
-              indexing = false;
               setupError = status.error;
               return;
             }
 
-            indexing = false;
             setupMode = false;
             await resizeSearchWindow();
             await windowHandle.center();
@@ -148,14 +161,34 @@
             input?.select();
           }
         } catch (error) {
-          window.clearInterval(poll);
+          if (indexPoll !== undefined) {
+            window.clearInterval(indexPoll);
+            indexPoll = undefined;
+          }
           indexing = false;
+          cancelRequested = false;
           setupError = "Indexing status could not be read: " + String(error);
         }
       }, 250);
     } catch (error) {
       indexing = false;
+      cancelRequested = false;
       setupError = String(error);
+    }
+  }
+
+  async function cancelIndexing() {
+    if (!indexing || cancelRequested) {
+      return;
+    }
+
+    cancelRequested = true;
+
+    try {
+      await invoke("cancel_indexing");
+    } catch (error) {
+      cancelRequested = false;
+      setupError = "Could not cancel indexing: " + String(error);
     }
   }
 
@@ -346,9 +379,17 @@
             <div class="progress-indicator"></div>
           </div>
           <div class="status-text">
-            <span>Building search index…</span>
+            <span>{cancelRequested ? "Canceling…" : "Building search index…"}</span>
             <span>{indexedCount.toLocaleString()} files scanned</span>
           </div>
+          <button
+            class="cancel-indexing"
+            type="button"
+            onclick={cancelIndexing}
+            disabled={cancelRequested}
+          >
+            {cancelRequested ? "Canceling…" : "Cancel"}
+          </button>
         </div>
       {:else}
         <div class="setup-footer">
