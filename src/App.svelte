@@ -381,12 +381,21 @@
     await windowHandle.hide();
   }
 
+  function normalizedCommandQuery(value: string) {
+    return value.trim().replace(/^／/, "/");
+  }
+
+  function isCommandQuery(value: string) {
+    return normalizedCommandQuery(value).startsWith("/");
+  }
+
   async function search() {
     const currentRequest = ++requestId;
     if (indexMessage) {
       indexMessage = "";
     }
-    const value = query.trim();
+    const rawValue = query.trim();
+    const value = normalizedCommandQuery(rawValue);
 
     if (value.startsWith("/")) {
       commandMatches = COMMANDS.filter((item) =>
@@ -450,7 +459,16 @@
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (results.length > 0) {
+
+      if (viewMode !== "search") {
+        return;
+      }
+
+      if (isCommandQuery(query)) {
+        if (commandMatches.length > 0) {
+          selected = Math.min(selected + 1, commandMatches.length - 1);
+        }
+      } else if (results.length > 0) {
         selected = Math.min(selected + 1, results.length - 1);
       }
       return;
@@ -458,7 +476,16 @@
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      if (results.length > 0) {
+
+      if (viewMode !== "search") {
+        return;
+      }
+
+      if (isCommandQuery(query)) {
+        if (commandMatches.length > 0) {
+          selected = Math.max(selected - 1, 0);
+        }
+      } else if (results.length > 0) {
         selected = Math.max(selected - 1, 0);
       }
       return;
@@ -467,7 +494,7 @@
     if (
       event.key === "Enter" &&
       viewMode === "search" &&
-      query.trim().startsWith("/") &&
+      isCommandQuery(query) &&
       commandMatches[selected]
     ) {
       event.preventDefault();
