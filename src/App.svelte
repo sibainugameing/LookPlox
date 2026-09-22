@@ -22,9 +22,26 @@
     error: string | null;
   };
 
+  type Theme = "system" | "light" | "dark";
+
+  type Settings = {
+    resultLimit: number;
+    showPaths: boolean;
+    theme: Theme;
+    hideOnBlur: boolean;
+  };
+
   type CommandItem = {
     command: string;
     description: string;
+  };
+
+  const SETTINGS_KEY = "lookplox.settings";
+  const DEFAULT_SETTINGS: Settings = {
+    resultLimit: 12,
+    showPaths: true,
+    theme: "system",
+    hideOnBlur: true,
   };
 
   const COMMANDS: CommandItem[] = [
@@ -52,7 +69,69 @@
   let indexPoll: number | undefined;
   let folderPickerOpen = false;
 
+  let settings: Settings = { ...DEFAULT_SETTINGS };
+
   const windowHandle = getCurrentWindow();
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) {
+        settings = { ...DEFAULT_SETTINGS };
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<Settings>;
+      settings = {
+        resultLimit:
+          typeof parsed.resultLimit === "number" && [6, 12, 24, 50].includes(parsed.resultLimit)
+            ? parsed.resultLimit
+            : DEFAULT_SETTINGS.resultLimit,
+        showPaths:
+          typeof parsed.showPaths === "boolean"
+            ? parsed.showPaths
+            : DEFAULT_SETTINGS.showPaths,
+        theme:
+          parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
+            ? parsed.theme
+            : DEFAULT_SETTINGS.theme,
+        hideOnBlur:
+          typeof parsed.hideOnBlur === "boolean"
+            ? parsed.hideOnBlur
+            : DEFAULT_SETTINGS.hideOnBlur,
+      };
+    } catch {
+      settings = { ...DEFAULT_SETTINGS };
+    }
+
+    applyTheme();
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch {
+      // Settings are optional; keep the current in-memory values.
+    }
+    applyTheme();
+  }
+
+  function updateSettings(patch: Partial<Settings>) {
+    settings = { ...settings, ...patch };
+    saveSettings();
+  }
+
+  function applyTheme() {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (settings.theme === "system") {
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      document.documentElement.dataset.theme = settings.theme;
+    }
+  }
 
   async function resizeSearchWindow(resultCount = 0) {
     const visibleResults = Math.min(Math.max(resultCount, 1), 8);
@@ -69,7 +148,7 @@
   }
 
   async function resizeConfigWindow() {
-    await windowHandle.setSize(new LogicalSize(760, 520));
+    await windowHandle.setSize(new LogicalSize(760, 600));
   }
 
   async function resizeHelpWindow() {
@@ -145,10 +224,8 @@
     roots = roots.filter((_, itemIndex) => itemIndex !== index);
   }
 
-  async function finishSetup() {
-    setupError = "";
-
-    if (roots.length === 0) {
+  async function startIndexing(rootsToIndex: string[], finishSetupWhenDone = false, message = "Indexing…") {
+    if (rootsToIndex.length === 0) {
       setupError = "Add at least one folder to continue.";
       return;
     }
@@ -156,9 +233,11 @@
     indexing = true;
     cancelRequested = false;
     indexedCount = 0;
+    setupError = "";
+    indexMessage = message;
 
     try {
-      await invoke("start_indexing", { roots });
+      await invoke("start_indexing", { roots: rootsToIndex });
 
       if (indexPoll !== undefined) {
         window.clearInterval(indexPoll);
@@ -176,22 +255,37 @@
 
             if (cancelRequested || status.error === "Indexing canceled.") {
               cancelRequested = false;
-              setupError = "";
+              indexMessage = "";
               return;
             }
 
             if (status.error) {
               setupError = status.error;
+              indexMessage = "";
               return;
             }
 
-            setupMode = false;
-            await resizeSearchWindow();
-            await windowHandle.center();
-            await windowHandle.setFocus();
-            await tick();
-            input?.focus();
-            input?.select();
+            cancelRequested = false;
+            indexMessage = finishSetupWhenDone ? "" : "Index rebuilt";
+
+            if (finishSetupWhenDone) {
+              setupMode = false;
+            }
+
+            if (finishSetupWhenDone) {
+              await resizeSearchWindow();
+              await windowHandle.center();
+              await windowHandle.setFocus();
+              await tick();
+              input?.focus();
+              input?.select();
+            } else {
+              window.setTimeout(() => {
+                if (!indexing) {
+                  indexMessage = "";
+                }
+              }, 1800);
+            }
           }
         } catch (error) {
           if (indexPoll !== undefined) {
@@ -206,8 +300,20 @@
     } catch (error) {
       indexing = false;
       cancelRequested = false;
+      indexMessage = "";
       setupError = String(error);
     }
+  }
+
+  async function finishSetup() {
+    setupError = "";
+
+    if (roots.length === 0) {
+      setupError = "Add at least one folder to continue.";
+      return;
+    }
+
+    await startIndexing(roots, true, "Building search index…");
   }
 
   async function cancelIndexing() {
@@ -246,49 +352,7 @@
         root: selectedPath,
       });
 
-      indexing = true;
-      cancelRequested = false;
-      indexedCount = 0;
-      indexMessage = "Indexing folder…";
-
-      if (indexPoll !== undefined) {
-        window.clearInterval(indexPoll);
-      }
-
-      indexPoll = window.setInterval(async () => {
-        try {
-          const status = await invoke<IndexingStatus>("get_indexing_status");
-          indexedCount = status.indexed;
-
-          if (!status.running) {
-            window.clearInterval(indexPoll);
-            indexPoll = undefined;
-            indexing = false;
-
-            if (status.error) {
-              setupError = status.error;
-
-              const state = await invoke<SetupState>("get_setup_state");
-              roots = state.roots;
-              indexMessage = "";
-              return;
-            }
-
-            indexMessage = "Index updated";
-            window.setTimeout(() => {
-              indexMessage = "";
-            }, 1800);
-          }
-        } catch (error) {
-          if (indexPoll !== undefined) {
-            window.clearInterval(indexPoll);
-            indexPoll = undefined;
-          }
-          indexing = false;
-          setupError = "Indexing status could not be read: " + String(error);
-          indexMessage = "";
-        }
-      }, 250);
+      await pollIndexing("Indexing folder…");
     } catch (error) {
       setupError = String(error);
       indexMessage = "";
@@ -297,12 +361,71 @@
     }
   }
 
+  async function pollIndexing(message: string) {
+    indexing = true;
+    cancelRequested = false;
+    indexedCount = 0;
+    indexMessage = message;
+
+    if (indexPoll !== undefined) {
+      window.clearInterval(indexPoll);
+    }
+
+    indexPoll = window.setInterval(async () => {
+      try {
+        const status = await invoke<IndexingStatus>("get_indexing_status");
+        indexedCount = status.indexed;
+
+        if (!status.running) {
+          window.clearInterval(indexPoll);
+          indexPoll = undefined;
+          indexing = false;
+
+          if (status.error) {
+            setupError = status.error;
+            const state = await invoke<SetupState>("get_setup_state");
+            roots = state.roots;
+            indexMessage = "";
+            return;
+          }
+
+          indexMessage = "Index updated";
+          window.setTimeout(() => {
+            indexMessage = "";
+          }, 1800);
+        }
+      } catch (error) {
+        if (indexPoll !== undefined) {
+          window.clearInterval(indexPoll);
+          indexPoll = undefined;
+        }
+        indexing = false;
+        setupError = "Indexing status could not be read: " + String(error);
+        indexMessage = "";
+      }
+    }, 250);
+  }
+
+  async function reindexNow() {
+    if (indexing) {
+      return;
+    }
+
+    if (roots.length === 0) {
+      setupError = "No folders are configured.";
+      return;
+    }
+
+    await startIndexing(roots, false, "Rebuilding search index…");
+  }
+
   async function showConfig() {
     viewMode = "config";
     query = "";
     results = [];
     commandMatches = [];
     selected = 0;
+    setupError = "";
     await resizeConfigWindow();
     await windowHandle.center();
     await windowHandle.setFocus();
@@ -325,6 +448,8 @@
     results = [];
     commandMatches = [];
     selected = 0;
+    setupError = "";
+    indexMessage = "";
     await resizeSearchWindow(0);
     await windowHandle.setFocus();
     await tick();
@@ -391,9 +516,10 @@
 
   async function search() {
     const currentRequest = ++requestId;
-    if (indexMessage) {
+    if (indexMessage && !indexing) {
       indexMessage = "";
     }
+
     const rawValue = query.trim();
     const value = normalizedCommandQuery(rawValue);
 
@@ -421,7 +547,7 @@
     try {
       const nextResults = await invoke<SearchResult[]>("search_files", {
         query: value,
-        limit: 12,
+        limit: settings.resultLimit,
       });
 
       if (currentRequest === requestId) {
@@ -511,6 +637,9 @@
   onMount(() => {
     let unlistenFocus: (() => void) | undefined;
 
+    loadSettings();
+    applyTheme();
+
     const initialize = async () => {
       try {
         const state = await invoke<SetupState>("get_setup_state");
@@ -527,14 +656,16 @@
 
         unlistenFocus = await windowHandle.onFocusChanged(async ({ payload }) => {
           if (!payload) {
-            if (!setupMode && viewMode === "search" && !folderPickerOpen) {
+            if (!setupMode && viewMode === "search" && !folderPickerOpen && settings.hideOnBlur) {
               await windowHandle.hide();
             }
             return;
           }
 
           if (!setupMode) {
-            await resizeSearchWindow(results.length);
+            if (viewMode === "config") {
+              await resizeConfigWindow();
+            }
             await tick();
             input?.focus();
             input?.select();
@@ -553,6 +684,9 @@
 
     return () => {
       unlistenFocus?.();
+      if (indexPoll !== undefined) {
+        window.clearInterval(indexPoll);
+      }
     };
   });
 </script>
@@ -650,17 +784,118 @@
         <div>
           <div class="setup-kicker">LOOKPLOX</div>
           <h1>Settings</h1>
-          <p>Manage the folders LookPlox tracks for continuous file-name search.</p>
+          <p>Control search results, appearance, window behavior, and indexing.</p>
         </div>
       </header>
 
       <div class="settings-section">
         <div class="settings-section-heading">
-          <span>Tracked folders</span>
-          <span class="root-count">{roots.length}</span>
+          <span>Search</span>
         </div>
 
-        <div class="settings-roots">
+        <div class="settings-options">
+          <label class="settings-row">
+            <span class="settings-copy">
+              <span class="settings-title">Result limit</span>
+              <span class="settings-description">Maximum number of matching files returned by each search.</span>
+            </span>
+            <select
+              value={settings.resultLimit}
+              onchange={(event) =>
+                updateSettings({ resultLimit: Number((event.currentTarget as HTMLSelectElement).value) })}
+            >
+              <option value="6">6</option>
+              <option value="12">12</option>
+              <option value="24">24</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-copy">
+              <span class="settings-title">Show file paths</span>
+              <span class="settings-description">Display the full path below each search result.</span>
+            </span>
+            <input
+              class="settings-switch"
+              type="checkbox"
+              checked={settings.showPaths}
+              onchange={(event) =>
+                updateSettings({ showPaths: (event.currentTarget as HTMLInputElement).checked })}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-heading">
+          <span>Appearance</span>
+        </div>
+
+        <div class="settings-options">
+          <label class="settings-row">
+            <span class="settings-copy">
+              <span class="settings-title">Theme</span>
+              <span class="settings-description">Choose the interface appearance.</span>
+            </span>
+            <select
+              value={settings.theme}
+              onchange={(event) =>
+                updateSettings({
+                  theme: (event.currentTarget as HTMLSelectElement).value as Theme,
+                })}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-heading">
+          <span>Window</span>
+        </div>
+
+        <div class="settings-options">
+          <label class="settings-row">
+            <span class="settings-copy">
+              <span class="settings-title">Hide when focus is lost</span>
+              <span class="settings-description">Automatically hide the search window after clicking another app.</span>
+            </span>
+            <input
+              class="settings-switch"
+              type="checkbox"
+              checked={settings.hideOnBlur}
+              onchange={(event) =>
+                updateSettings({ hideOnBlur: (event.currentTarget as HTMLInputElement).checked })}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-heading">
+          <span>Index</span>
+        </div>
+
+        <div class="settings-action-row">
+          <div class="settings-copy">
+            <span class="settings-title">Rebuild search index</span>
+            <span class="settings-description">Rescan all tracked folders and replace the current local index.</span>
+          </div>
+          <button class="secondary-action" type="button" onclick={reindexNow} disabled={indexing}>
+            {indexing ? "Rebuilding…" : "Rebuild"}
+          </button>
+        </div>
+
+        <div class="settings-roots compact-roots">
+          <div class="settings-section-heading subheading">
+            <span>Tracked folders</span>
+            <span class="root-count">{roots.length}</span>
+          </div>
+
           {#each roots as root}
             <div class="settings-root-row">
               <span class="folder-mark" aria-hidden="true">
@@ -687,16 +922,30 @@
         </button>
       </div>
 
+      <div class="settings-section settings-about">
+        <div class="settings-section-heading">
+          <span>About</span>
+        </div>
+        <div class="about-row">
+          <span>Version</span>
+          <strong>0.1.0</strong>
+        </div>
+        <div class="about-row">
+          <span>Search engine</span>
+          <strong>Local index</strong>
+        </div>
+      </div>
+
       <div class="settings-footer">
         <div class:error={Boolean(setupError)}>
           {#if setupError}
             {setupError}
           {:else if indexing}
-            {cancelRequested ? "Canceling…" : "Indexing folder…"}
+            {cancelRequested ? "Canceling…" : "Rebuilding search index…"} · {indexedCount.toLocaleString()} scanned
           {:else if indexMessage}
             {indexMessage}
           {:else}
-            <span>Folders are monitored continuously while LookPlox is running.</span>
+            <span>Settings are saved automatically.</span>
           {/if}
         </div>
         {#if indexing}
@@ -802,7 +1051,9 @@
             </span>
             <span class="result-text">
               <span class="name">{result.name}</span>
-              <span class="path">{result.path}</span>
+              {#if settings.showPaths}
+                <span class="path">{result.path}</span>
+              {/if}
             </span>
           </button>
         {/each}
