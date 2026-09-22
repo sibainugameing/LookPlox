@@ -26,6 +26,7 @@ pub struct AppState {
 
 pub struct IndexingState {
   pub running: AtomicBool,
+  pub cancel_requested: AtomicBool,
   pub indexed: AtomicUsize,
   pub error: Mutex<Option<String>>,
 }
@@ -90,7 +91,7 @@ impl SearchEngine {
       .get_field("path")
       .map_err(|_| tantivy::TantivyError::InvalidArgument("Missing path field".into()))?;
 
-    let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(2, 16, false)?)
+    let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(2, 8, false)?)
       .filter(LowerCaser)
       .build();
 
@@ -117,6 +118,26 @@ impl SearchEngine {
     writer.delete_all_documents()?;
     writer.commit()?;
     self.reader.reload()?;
+    Ok(())
+  }
+
+  pub fn add_file(&self, path: &Path) -> tantivy::Result<()> {
+    let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+      return Ok(());
+    };
+
+    let path_string = path.to_string_lossy().into_owned();
+
+    let mut writer = self
+      .writer
+      .lock()
+      .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
+
+    writer.add_document(doc!(
+      self.name_field => name.to_string(),
+      self.path_field => path_string,
+    ))?;
+
     Ok(())
   }
 
@@ -273,23 +294,32 @@ fn initial_scan(
       .into_iter()
       .filter_map(Result::ok)
     {
-      let path = entry.path();
-
-      if !path.is_file() {
-        continue;
+      if indexing.cancel_requested.load(Ordering::Relaxed) {
+        return Err("Indexing canceled.".into());
       }
 
-      indexing.indexed.fetch_add(1, Ordering::Relaxed);
-
-      if let Err(error) = engine.upsert_path(path) {
-        eprintln!("LookPlox skipped {:?}: {error}", path);
-        continue;
-      }
-
-      if indexing.indexed.load(Ordering::Relaxed) % 1000 == 0 {
+      if indexing.indexed.load(Ordering::Relaxed) % 512 == 0
+        && indexing.indexed.load(Ordering::Relaxed) != 0
+      {
         engine.commit().map_err(|error| error.to_string())?;
       }
+
+      let entry = entry;
+      if !entry.file_type().is_file() {
+        continue;
+      }
+
+      let path = entry.path();
+      indexing.indexed.fetch_add(1, Ordering::Relaxed);
+
+      if let Err(error) = engine.add_file(path) {
+        eprintln!("LookPlox skipped {:?}: {error}", path);
+      }
     }
+  }
+
+  if indexing.cancel_requested.load(Ordering::Relaxed) {
+    return Err("Indexing canceled.".into());
   }
 
   engine.commit().map_err(|error| error.to_string())?;
@@ -397,10 +427,6 @@ fn start_indexing(
     return Err("Add at least one folder to continue.".into());
   }
 
-  if state.indexing.running.load(Ordering::SeqCst) {
-    return Err("Indexing is already running.".into());
-  }
-
   let normalized: Vec<PathBuf> = roots
     .into_iter()
     .map(PathBuf::from)
@@ -411,11 +437,6 @@ fn start_indexing(
     return Err("None of the selected folders are available.".into());
   }
 
-  let marker = marker_path(&app)?;
-  save_roots(&app, &normalized)?;
-
-  let _ = std::fs::remove_file(&marker);
-
   if state
     .indexing
     .running
@@ -425,16 +446,23 @@ fn start_indexing(
   }
 
   state.initialized.store(false, Ordering::SeqCst);
+  state.indexing.cancel_requested.store(false, Ordering::SeqCst);
   state.indexing.indexed.store(0, Ordering::Relaxed);
+
   if let Ok(mut error) = state.indexing.error.lock() {
     *error = None;
   }
 
-  start_watcher_once(&state, normalized.clone());
+  let marker = marker_path(&app)?;
+  save_roots(&app, &normalized)?;
+  let _ = std::fs::remove_file(&marker);
 
   let engine = Arc::clone(&state.engine);
   let indexing = Arc::clone(&state.indexing);
   let initialized = Arc::clone(&state.initialized);
+  let watcher_started = Arc::clone(&state.watcher_started);
+  let watcher_engine = Arc::clone(&state.engine);
+  let watcher_roots = normalized.clone();
 
   std::thread::spawn(move || {
     let result = initial_scan(engine, normalized, Arc::clone(&indexing));
@@ -448,12 +476,17 @@ fn start_indexing(
           initialized.store(false, Ordering::SeqCst);
         } else {
           initialized.store(true, Ordering::SeqCst);
+
+          if !watcher_started.swap(true, Ordering::SeqCst) {
+            start_watcher(watcher_engine, watcher_roots);
+          }
         }
       }
       Err(error) => {
         initialized.store(false, Ordering::SeqCst);
+
         if let Ok(mut status_error) = indexing.error.lock() {
-          *status_error = Some(format!("Initial indexing failed: {error}"));
+          *status_error = Some(error);
         }
       }
     }
@@ -461,6 +494,16 @@ fn start_indexing(
     indexing.running.store(false, Ordering::SeqCst);
   });
 
+  Ok(())
+}
+
+#[tauri::command]
+fn cancel_indexing(state: State<'_, AppState>) -> Result<(), String> {
+  if !state.indexing.running.load(Ordering::SeqCst) {
+    return Ok(());
+  }
+
+  state.indexing.cancel_requested.store(true, Ordering::SeqCst);
   Ok(())
 }
 
@@ -506,6 +549,7 @@ fn open_path(path: String) -> Result<(), String> {
 pub fn run() {
   let indexing = Arc::new(IndexingState {
     running: AtomicBool::new(false),
+    cancel_requested: AtomicBool::new(false),
     indexed: AtomicUsize::new(0),
     error: Mutex::new(None),
   });
@@ -589,6 +633,7 @@ pub fn run() {
       get_setup_state,
       get_indexing_status,
       start_indexing,
+      cancel_indexing,
       search_files,
       open_path
     ])
