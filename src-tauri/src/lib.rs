@@ -60,7 +60,32 @@ pub struct IndexingStatus {
   pub error: Option<String>,
 }
 
-const INDEX_VERSION: &str = "4";
+const INDEX_VERSION: &str = "5";
+
+fn is_app_bundle(path: &Path) -> bool {
+  #[cfg(target_os = "macos")]
+  {
+    return path
+      .extension()
+      .and_then(|extension| extension.to_str())
+      .is_some_and(|extension| extension.eq_ignore_ascii_case("app"));
+  }
+
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = path;
+    false
+  }
+}
+
+fn is_inside_app_bundle(path: &Path) -> bool {
+  path.ancestors().skip(1).any(is_app_bundle)
+}
+
+fn should_walk_entry(path: &Path) -> bool {
+  !is_inside_app_bundle(path)
+}
+
 
 pub struct SearchEngine {
   index: Index,
@@ -156,7 +181,8 @@ impl SearchEngine {
     };
 
     let path_string = path.to_string_lossy().into_owned();
-    let is_dir = metadata.is_dir();
+    // macOS .app bundles are directories on disk, but should appear as applications in search results.
+    let is_dir = metadata.is_dir() && !is_app_bundle(path);
 
     let mut writer = self
       .writer
@@ -418,6 +444,7 @@ fn initial_scan(
     for entry in WalkDir::new(&root)
       .follow_links(false)
       .into_iter()
+      .filter_entry(|entry| should_walk_entry(entry.path()))
       .filter_map(Result::ok)
     {
       if indexing.cancel_requested.load(Ordering::Relaxed) {
@@ -462,6 +489,7 @@ fn incremental_scan(
   for entry in WalkDir::new(&root)
     .follow_links(false)
     .into_iter()
+    .filter_entry(|entry| should_walk_entry(entry.path()))
     .filter_map(Result::ok)
   {
     if indexing.cancel_requested.load(Ordering::Relaxed) {
@@ -525,15 +553,24 @@ fn process_event(
         changed = true;
       }
     } else if path.is_dir() {
+      if is_inside_app_bundle(&path) {
+        continue;
+      }
+
       if let Err(error) = engine.upsert_path(&path) {
         eprintln!("LookPlox failed to index folder {:?}: {error}", path);
       } else {
         changed = true;
       }
 
+      if is_app_bundle(&path) {
+        continue;
+      }
+
       for entry in WalkDir::new(&path)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|entry| should_walk_entry(entry.path()))
         .filter_map(Result::ok)
       {
         if !entry.file_type().is_file() && !entry.file_type().is_dir() {
