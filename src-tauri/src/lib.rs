@@ -13,7 +13,7 @@ use tantivy::query::{BooleanQuery, Query, RegexQuery, TermQuery};
 use tantivy::schema::{
   Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
 };
-use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer, Tokenizer};
+use tantivy::tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, Term, TantivyDocument};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -130,7 +130,7 @@ impl SearchEngine {
   }
 
   pub fn clear(&self) -> tantivy::Result<()> {
-    let mut writer = self
+    let writer = self
       .writer
       .lock()
       .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
@@ -211,7 +211,7 @@ impl SearchEngine {
     let pattern = format!("^{}", escaped_prefix);
     let searcher = self.reader.searcher();
     let query = RegexQuery::from_pattern(&pattern, self.path_field)?;
-    let top_docs = searcher.search(&query, &TopDocs::with_limit(1_000_000))?;
+    let top_docs = searcher.search(&query, &TopDocs::with_limit(1_000_000).order_by_score())?;
 
     let mut paths_to_remove = Vec::with_capacity(top_docs.len() + 2);
     if !raw_path.is_empty() {
@@ -415,7 +415,7 @@ fn initial_scan(
   engine.clear().map_err(|error| error.to_string())?;
 
   for root in roots {
-    for entry in WalkDir::new(root)
+    for entry in WalkDir::new(&root)
       .follow_links(false)
       .into_iter()
       .filter_map(Result::ok)
