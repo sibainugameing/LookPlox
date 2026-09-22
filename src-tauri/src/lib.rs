@@ -17,6 +17,12 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use walkdir::WalkDir;
 
+#[cfg(target_os = "macos")]
+use window_vibrancy::{
+  apply_liquid_glass, apply_vibrancy, LiquidGlassOptions, NSGlassEffectViewStyle,
+  NSVisualEffectMaterial, NSVisualEffectState,
+};
+
 pub struct AppState {
   pub engine: Arc<SearchEngine>,
   pub indexing: Arc<IndexingState>,
@@ -605,6 +611,26 @@ pub fn run() {
 
         let roots = read_roots(app.handle())?;
         let is_initialized = marker_path(app.handle())?.exists() && !roots.is_empty();
+
+        #[cfg(target_os = "macos")]
+        if let Some(window) = app.get_webview_window("main") {
+          let liquid_glass = LiquidGlassOptions::new(NSGlassEffectViewStyle::Clear)
+            .radius(26.0)
+            .opaque(false);
+
+          if let Err(error) = apply_liquid_glass(&window, liquid_glass) {
+            eprintln!("LookPlox liquid glass unavailable: {error}");
+
+            if let Err(error) = apply_vibrancy(
+              &window,
+              NSVisualEffectMaterial::HudWindow,
+              Some(NSVisualEffectState::Active),
+              Some(18.0),
+            ) {
+              eprintln!("LookPlox vibrancy unavailable: {error}");
+            }
+          }
+        }
 
         initialized.store(is_initialized, Ordering::SeqCst);
 
