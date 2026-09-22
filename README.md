@@ -8,6 +8,7 @@ Fast local file search and indexing application.
 - Windows-compatible architecture
 - Local-only indexing
 - Minimal floating search UI
+- First-run folder selection
 
 ## Stack
 
@@ -20,11 +21,12 @@ Fast local file search and indexing application.
 
 ## MVP
 
-1. Index common user folders.
-2. Keep the index updated with filesystem events.
-3. Search file names from the local index.
-4. Open the selected file.
-5. Show the search window with a global shortcut.
+1. Let the user choose folders to index on first launch.
+2. Build a local filename index from the selected folders.
+3. Keep the index updated with filesystem events.
+4. Search file names from the local index.
+5. Open the selected file.
+6. Show the search window with a global shortcut.
 
 ## Development
 
@@ -46,16 +48,18 @@ Run:
 npm run tauri dev
 ~~~
 
-The initial macOS shortcut is:
+The macOS shortcut is:
 
 ~~~
-Command + Shift + Space
+Option + Space
 ~~~
 
-Command + Space is intentionally not used in the MVP because macOS commonly reserves it for Spotlight.
+Command + Space is intentionally not used because macOS commonly reserves it for Spotlight.
 
-## Index location
+## First launch
 
-The search index is stored in the application's platform-specific application-data directory.
+LookPlox starts with a setup screen where you choose the folders that should be indexed.
+
+Folders are stored in the application's local application-data directory as configuration. The search index is stored there as well.
 
 No file contents are uploaded. The MVP indexes file metadata and names locally.
