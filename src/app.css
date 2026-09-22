@@ -199,3 +199,184 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 .file-icon {
   color: rgba(40, 40, 44, 0.60);
 }
+
+
+.commands {
+  max-height: 280px;
+}
+
+.command-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(60, 60, 65, 0.08);
+  color: rgba(40, 40, 44, 0.62);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.command-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+.command-description {
+  font-size: 12px;
+}
+
+.config-shell {
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 18px;
+}
+
+.settings-card {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 484px;
+  padding: 26px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 28px;
+  background: rgba(247, 247, 248, 0.86);
+  box-shadow: 0 24px 55px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(30px) saturate(140%);
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settings-header h1 {
+  margin: 7px 0 6px;
+  font-size: 25px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.settings-header p {
+  max-width: 600px;
+  margin: 0;
+  color: rgba(60, 60, 64, 0.58);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-back {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  border-radius: 10px;
+  background: rgba(60, 60, 65, 0.07);
+  color: rgba(35, 35, 38, 0.68);
+  cursor: pointer;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.settings-back:hover {
+  background: rgba(60, 60, 65, 0.11);
+}
+
+.settings-section {
+  margin-top: 24px;
+}
+
+.settings-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(40, 40, 44, 0.68);
+}
+
+.settings-roots {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.settings-root-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 9px 0 11px;
+  box-sizing: border-box;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.settings-root-row .folder-mark {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+}
+
+.settings-root-row .folder-mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-add {
+  margin-top: 10px;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 22px;
+  min-height: 40px;
+  font-size: 11px;
+  color: rgba(60, 60, 64, 0.50);
+}
+
+.settings-footer > div {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.settings-footer > div.error {
+  color: rgba(160, 46, 46, 0.78);
+}
+
+.help-card {
+  min-height: 324px;
+}
+
+.command-help-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 24px;
+}
+
+.command-help-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 50px;
+  padding: 0 13px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.38);
+  color: rgba(35, 35, 38, 0.82);
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-help-row:hover {
+  background: rgba(255, 255, 255, 0.60);
+}
