@@ -62,7 +62,7 @@ impl SearchEngine {
       .get_field("path")
       .map_err(|_| tantivy::TantivyError::InvalidArgument("Missing path field".into()))?;
 
-    let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(1, 32, false)?)
+    let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(2, 16, false)?)
       .filter(LowerCaser)
       .build();
 
