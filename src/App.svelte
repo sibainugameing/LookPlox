@@ -62,11 +62,12 @@
       return true;
     }
 
-    const separator = parentPath.endsWith("\\") || parentPath.endsWith("/")
-      ? ""
-      : parentPath.includes("\\")
-        ? "\\"
-        : "/";
+    const separator =
+      parentPath.endsWith("\\") || parentPath.endsWith("/")
+        ? ""
+        : parentPath.includes("\\")
+          ? "\\"
+          : "/";
 
     return candidatePath.startsWith(parentPath + separator);
   }
@@ -307,7 +308,7 @@
 
       <div class="roots-panel">
         <div class="roots-heading">
-          <span>Indexed folders</span>
+          <span>Folders to index</span>
           <span class="root-count">{roots.length}</span>
         </div>
 
@@ -352,7 +353,7 @@
       {:else}
         <div class="setup-footer">
           <span class:error={Boolean(setupError)}>
-            {setupError || "You can change indexed folders later in Settings."}
+            {setupError || "Ready to build the local search index."}
           </span>
           <button
             class="start-indexing"
