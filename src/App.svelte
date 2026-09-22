@@ -34,6 +34,7 @@
   let cancelRequested = false;
   let indexedCount = 0;
   let setupError = "";
+  let indexMessage = "";
   let indexPoll: number | undefined;
 
   const windowHandle = getCurrentWindow();
@@ -198,6 +199,75 @@
     }
   }
 
+  async function addIndexFolder() {
+    setupError = "";
+    indexMessage = "";
+
+    try {
+      const selectedPath = await open({
+        directory: true,
+        multiple: false,
+        recursive: true,
+        title: "Add a folder to the LookPlox index",
+      });
+
+      if (typeof selectedPath !== "string") {
+        return;
+      }
+
+      roots = await invoke<string[]>("add_index_root", {
+        root: selectedPath,
+      });
+
+      indexing = true;
+      cancelRequested = false;
+      indexedCount = 0;
+      indexMessage = "Indexing folder…";
+
+      if (indexPoll !== undefined) {
+        window.clearInterval(indexPoll);
+      }
+
+      indexPoll = window.setInterval(async () => {
+        try {
+          const status = await invoke<IndexingStatus>("get_indexing_status");
+          indexedCount = status.indexed;
+
+          if (!status.running) {
+            window.clearInterval(indexPoll);
+            indexPoll = undefined;
+            indexing = false;
+
+            if (status.error) {
+              setupError = status.error;
+
+              const state = await invoke<SetupState>("get_setup_state");
+              roots = state.roots;
+              indexMessage = "";
+              return;
+            }
+
+            indexMessage = "Index updated";
+            window.setTimeout(() => {
+              indexMessage = "";
+            }, 1800);
+          }
+        } catch (error) {
+          if (indexPoll !== undefined) {
+            window.clearInterval(indexPoll);
+            indexPoll = undefined;
+          }
+          indexing = false;
+          setupError = "Indexing status could not be read: " + String(error);
+          indexMessage = "";
+        }
+      }, 250);
+    } catch (error) {
+      setupError = String(error);
+      indexMessage = "";
+    }
+  }
+
   async function hideSearchWindow() {
     if (setupMode) {
       return;
@@ -212,6 +282,9 @@
 
   async function search() {
     const currentRequest = ++requestId;
+    if (indexMessage) {
+      indexMessage = "";
+    }
     const value = query.trim();
 
     if (!value) {
@@ -433,9 +506,21 @@
       />
       {#if searching}
         <span class="status">Searching</span>
+      {:else if indexMessage}
+        <span class="status">{indexMessage}</span>
       {:else if results.length > 0}
         <span class="status">{results.length}</span>
       {/if}
+      <button
+        class="add-index-folder"
+        type="button"
+        onclick={addIndexFolder}
+        disabled={indexing}
+        title="Add folder to index"
+        aria-label="Add folder to index"
+      >
+        +
+      </button>
     </div>
 
     {#if results.length > 0}
