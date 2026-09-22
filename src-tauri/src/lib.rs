@@ -9,7 +9,7 @@ use std::sync::{
 use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::doc;
-use tantivy::query::{BooleanQuery, PrefixQuery, Query, TermQuery};
+use tantivy::query::{BooleanQuery, Query, RegexQuery, TermQuery};
 use tantivy::schema::{
   Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
 };
@@ -197,8 +197,20 @@ impl SearchEngine {
       format!("{}{}", normalized_path, std::path::MAIN_SEPARATOR)
     };
 
+    let escaped_prefix: String = prefix
+      .chars()
+      .flat_map(|character| {
+        if r#"\\.^$|()[]{}*+?"#.contains(character) {
+          ['\\', character].into_iter().collect::<Vec<_>>()
+        } else {
+          [character].into_iter().collect::<Vec<_>>()
+        }
+      })
+      .collect();
+
+    let pattern = format!("^{}", escaped_prefix);
     let searcher = self.reader.searcher();
-    let query = PrefixQuery::new(Term::from_field_text(self.path_field, &prefix));
+    let query = RegexQuery::from_pattern(&pattern, self.path_field)?;
     let top_docs = searcher.search(&query, &TopDocs::with_limit(1_000_000))?;
 
     let mut paths_to_remove = Vec::with_capacity(top_docs.len() + 2);
