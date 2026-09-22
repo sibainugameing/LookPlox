@@ -44,6 +44,7 @@ pub struct IndexingState {
 pub struct SearchResult {
   pub name: String,
   pub path: String,
+  pub is_dir: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,7 +60,7 @@ pub struct IndexingStatus {
   pub error: Option<String>,
 }
 
-const INDEX_VERSION: &str = "3";
+const INDEX_VERSION: &str = "4";
 
 pub struct SearchEngine {
   index: Index,
@@ -67,6 +68,7 @@ pub struct SearchEngine {
   writer: Mutex<IndexWriter>,
   name_field: Field,
   path_field: Field,
+  is_dir_field: Field,
 }
 
 impl SearchEngine {
@@ -88,6 +90,7 @@ impl SearchEngine {
 
       schema_builder.add_text_field("name", name_options);
       schema_builder.add_text_field("path", STRING | STORED);
+      schema_builder.add_bool_field("is_dir", STORED);
 
       Index::create_in_dir(index_dir, schema_builder.build())?
     };
@@ -101,6 +104,11 @@ impl SearchEngine {
       .schema()
       .get_field("path")
       .map_err(|_| tantivy::TantivyError::InvalidArgument("Missing path field".into()))?;
+
+    let is_dir_field = index
+      .schema()
+      .get_field("is_dir")
+      .map_err(|_| tantivy::TantivyError::InvalidArgument("Missing is_dir field".into()))?;
 
     let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(1, 8, false)?)
       .filter(LowerCaser)
@@ -117,6 +125,7 @@ impl SearchEngine {
       writer: Mutex::new(writer),
       name_field,
       path_field,
+      is_dir_field,
     })
   }
 
@@ -132,28 +141,13 @@ impl SearchEngine {
     Ok(())
   }
 
-  pub fn add_file(&self, path: &Path) -> tantivy::Result<()> {
-    let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
-      return Ok(());
+  pub fn upsert_path(&self, path: &Path) -> tantivy::Result<()> {
+    let metadata = match std::fs::metadata(path) {
+      Ok(metadata) => metadata,
+      Err(_) => return Ok(()),
     };
 
-    let path_string = path.to_string_lossy().into_owned();
-
-    let mut writer = self
-      .writer
-      .lock()
-      .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
-
-    writer.add_document(doc!(
-      self.name_field => name.to_string(),
-      self.path_field => path_string,
-    ))?;
-
-    Ok(())
-  }
-
-  pub fn upsert_path(&self, path: &Path) -> tantivy::Result<()> {
-    if !matches!(std::fs::metadata(path), Ok(metadata) if metadata.is_file()) {
+    if !metadata.is_file() && !metadata.is_dir() {
       return Ok(());
     }
 
@@ -162,6 +156,7 @@ impl SearchEngine {
     };
 
     let path_string = path.to_string_lossy().into_owned();
+    let is_dir = metadata.is_dir();
 
     let mut writer = self
       .writer
@@ -173,6 +168,7 @@ impl SearchEngine {
     writer.add_document(doc!(
       self.name_field => name.to_string(),
       self.path_field => path_string,
+      self.is_dir_field => is_dir,
     ))?;
 
     Ok(())
@@ -271,11 +267,16 @@ impl SearchEngine {
         .unwrap_or_default()
         .to_owned();
 
+      let is_dir = doc
+        .get_first(self.is_dir_field)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+
       if !name.is_empty()
         && !path.is_empty()
         && name.to_lowercase().contains(&normalized)
       {
-        results.push(SearchResult { name, path });
+        results.push(SearchResult { name, path, is_dir });
 
         if results.len() >= requested_limit {
           break;
@@ -364,11 +365,16 @@ fn initial_scan(
         return Err("Indexing canceled.".into());
       }
 
-      if !entry.file_type().is_file() {
+      if !entry.file_type().is_file() && !entry.file_type().is_dir() {
         continue;
       }
 
       let path = entry.path();
+
+      if path == root {
+        continue;
+      }
+
       indexing.indexed.fetch_add(1, Ordering::Relaxed);
 
       if let Err(error) = engine.upsert_path(path) {
@@ -403,11 +409,16 @@ fn incremental_scan(
       return Err("Indexing canceled.".into());
     }
 
-    if !entry.file_type().is_file() {
+    if !entry.file_type().is_file() && !entry.file_type().is_dir() {
       continue;
     }
 
     let path = entry.path();
+
+    if path == root {
+      continue;
+    }
+
     indexing.indexed.fetch_add(1, Ordering::Relaxed);
 
     if let Err(error) = engine.upsert_path(path) {
@@ -455,12 +466,22 @@ fn process_event(
         changed = true;
       }
     } else if path.is_dir() {
+      if let Err(error) = engine.upsert_path(&path) {
+        eprintln!("LookPlox failed to index folder {:?}: {error}", path);
+      } else {
+        changed = true;
+      }
+
       for entry in WalkDir::new(&path)
         .follow_links(false)
         .into_iter()
         .filter_map(Result::ok)
       {
-        if !entry.file_type().is_file() {
+        if !entry.file_type().is_file() && !entry.file_type().is_dir() {
+          continue;
+        }
+
+        if entry.path() == path {
           continue;
         }
 
@@ -750,7 +771,7 @@ fn add_index_root(
 
       let _ = read_roots(&app_for_worker).and_then(|mut roots| {
         roots.retain(|item| item != &root_for_scan);
-        save_roots(&app, &roots)
+        save_roots(&app_for_worker, &roots)
       });
 
       if let Ok(mut status_error) = indexing.error.lock() {
@@ -872,6 +893,11 @@ pub fn run() {
         std::fs::create_dir_all(&data_dir)?;
 
         let index_dir = data_dir.join("index");
+
+        if !is_index_current(app.handle())? && index_dir.exists() {
+          std::fs::remove_dir_all(&index_dir)?;
+        }
+
         let engine = Arc::new(SearchEngine::open(&index_dir)?);
 
         let roots = read_roots(app.handle())?;
