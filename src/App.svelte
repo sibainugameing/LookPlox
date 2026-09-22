@@ -39,7 +39,7 @@
   const windowHandle = getCurrentWindow();
 
   async function resizeSearchWindow() {
-    await windowHandle.setSize(new LogicalSize(760, 190));
+    await windowHandle.setSize(new LogicalSize(760, 125));
   }
 
   async function resizeSetupWindow() {
