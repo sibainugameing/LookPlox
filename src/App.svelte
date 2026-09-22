@@ -22,12 +22,25 @@
     error: string | null;
   };
 
+  type CommandItem = {
+    command: string;
+    description: string;
+  };
+
+  const COMMANDS: CommandItem[] = [
+    { command: "/config", description: "Open LookPlox settings" },
+    { command: "/add-folder", description: "Add a folder to the search index" },
+    { command: "/help", description: "Show available commands" },
+  ];
+
   let query = "";
   let results: SearchResult[] = [];
+  let commandMatches: CommandItem[] = [];
   let selected = 0;
   let input: HTMLInputElement;
   let searching = false;
   let requestId = 0;
+  let viewMode: "search" | "config" | "help" = "search";
 
   let setupMode = true;
   let roots: string[] = [];
@@ -52,6 +65,14 @@
 
   async function resizeSetupWindow() {
     await windowHandle.setSize(new LogicalSize(760, 480));
+  }
+
+  async function resizeConfigWindow() {
+    await windowHandle.setSize(new LogicalSize(760, 520));
+  }
+
+  async function resizeHelpWindow() {
+    await windowHandle.setSize(new LogicalSize(760, 360));
   }
 
   function comparablePath(path: string) {
@@ -269,13 +290,85 @@
     }
   }
 
+  async function showConfig() {
+    viewMode = "config";
+    query = "";
+    results = [];
+    commandMatches = [];
+    selected = 0;
+    await resizeConfigWindow();
+    await windowHandle.center();
+    await windowHandle.setFocus();
+  }
+
+  async function showHelp() {
+    viewMode = "help";
+    query = "";
+    results = [];
+    commandMatches = [];
+    selected = 0;
+    await resizeHelpWindow();
+    await windowHandle.center();
+    await windowHandle.setFocus();
+  }
+
+  async function backToSearch() {
+    viewMode = "search";
+    query = "";
+    results = [];
+    commandMatches = [];
+    selected = 0;
+    await resizeSearchWindow(0);
+    await windowHandle.setFocus();
+    await tick();
+    input?.focus();
+    input?.select();
+  }
+
+  async function executeCommand(command: string) {
+    switch (command) {
+      case "/config":
+        await showConfig();
+        break;
+      case "/add-folder":
+        query = "";
+        commandMatches = [];
+        await addIndexFolder();
+        break;
+      case "/help":
+        await showHelp();
+        break;
+    }
+  }
+
+  async function removeTrackedFolder(root: string) {
+    setupError = "";
+    indexMessage = "";
+
+    try {
+      roots = await invoke<string[]>("remove_index_root", { root });
+      indexMessage = "Folder removed from index";
+      window.setTimeout(() => {
+        indexMessage = "";
+      }, 1800);
+    } catch (error) {
+      setupError = String(error);
+    }
+  }
+
   async function hideSearchWindow() {
     if (setupMode) {
       return;
     }
 
+    if (viewMode !== "search") {
+      await backToSearch();
+      return;
+    }
+
     query = "";
     results = [];
+    commandMatches = [];
     selected = 0;
     await resizeSearchWindow(0);
     await windowHandle.hide();
@@ -287,6 +380,18 @@
       indexMessage = "";
     }
     const value = query.trim();
+
+    if (value.startsWith("/")) {
+      commandMatches = COMMANDS.filter((item) =>
+        item.command.startsWith(value.toLowerCase()),
+      );
+      results = [];
+      selected = Math.min(selected, Math.max(commandMatches.length - 1, 0));
+      await resizeSearchWindow(commandMatches.length);
+      return;
+    }
+
+    commandMatches = [];
 
     if (!value) {
       results = [];
@@ -352,6 +457,17 @@
       return;
     }
 
+    if (
+      event.key === "Enter" &&
+      viewMode === "search" &&
+      query.trim().startsWith("/") &&
+      commandMatches[selected]
+    ) {
+      event.preventDefault();
+      await executeCommand(commandMatches[selected].command);
+      return;
+    }
+
     if (event.key === "Enter" && results[selected]) {
       event.preventDefault();
       await openResult(results[selected]);
@@ -377,7 +493,7 @@
 
         unlistenFocus = await windowHandle.onFocusChanged(async ({ payload }) => {
           if (!payload) {
-            if (!setupMode) {
+            if (!setupMode && viewMode === "search") {
               await windowHandle.hide();
             }
             return;
@@ -492,6 +608,93 @@
       {/if}
     </section>
   </main>
+{:else if viewMode === "config"}
+  <main class="config-shell">
+    <section class="settings-card" aria-label="LookPlox settings">
+      <header class="settings-header">
+        <button class="settings-back" type="button" onclick={backToSearch} aria-label="Back to search">‹</button>
+        <div>
+          <div class="setup-kicker">LOOKPLOX</div>
+          <h1>Settings</h1>
+          <p>Manage the folders LookPlox tracks for continuous file-name search.</p>
+        </div>
+      </header>
+
+      <div class="settings-section">
+        <div class="settings-section-heading">
+          <span>Tracked folders</span>
+          <span class="root-count">{roots.length}</span>
+        </div>
+
+        <div class="settings-roots">
+          {#each roots as root}
+            <div class="settings-root-row">
+              <span class="folder-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span class="root-path">{root}</span>
+              <button
+                class="remove-root"
+                type="button"
+                onclick={() => removeTrackedFolder(root)}
+                disabled={indexing || roots.length <= 1}
+                aria-label={"Stop tracking " + root}
+              >×</button>
+            </div>
+          {/each}
+        </div>
+
+        <button class="add-folder settings-add" type="button" onclick={addIndexFolder} disabled={indexing}>
+          <span>＋</span>
+          <span>Add folder</span>
+        </button>
+      </div>
+
+      <div class="settings-footer">
+        <div class:error={Boolean(setupError)}>
+          {#if setupError}
+            {setupError}
+          {:else if indexing}
+            {cancelRequested ? "Canceling…" : "Indexing folder…"}
+          {:else if indexMessage}
+            {indexMessage}
+          {:else}
+            <span>Folders are monitored continuously while LookPlox is running.</span>
+          {/if}
+        </div>
+        {#if indexing}
+          <button class="cancel-indexing" type="button" onclick={cancelIndexing} disabled={cancelRequested}>
+            {cancelRequested ? "Canceling…" : "Cancel"}
+          </button>
+        {/if}
+      </div>
+    </section>
+  </main>
+{:else if viewMode === "help"}
+  <main class="config-shell">
+    <section class="settings-card help-card" aria-label="LookPlox commands">
+      <header class="settings-header">
+        <button class="settings-back" type="button" onclick={backToSearch} aria-label="Back to search">‹</button>
+        <div>
+          <div class="setup-kicker">LOOKPLOX</div>
+          <h1>Commands</h1>
+          <p>Type a slash command in the search field and press Enter.</p>
+        </div>
+      </header>
+
+      <div class="command-help-list">
+        {#each COMMANDS as item}
+          <button class="command-help-row" type="button" onclick={() => executeCommand(item.command)}>
+            <span class="command-name">{item.command}</span>
+            <span class="command-description">{item.description}</span>
+          </button>
+        {/each}
+      </div>
+    </section>
+  </main>
 {:else}
   <main class="shell">
     <div class="search-bar">
@@ -500,10 +703,10 @@
         bind:this={input}
         bind:value={query}
         oninput={() => search()}
-        placeholder="Search files"
+        placeholder="Search files or /commands"
         autocomplete="off"
         spellcheck="false"
-        aria-label="Search files"
+        aria-label="Search files or commands"
       />
       {#if searching}
         <span class="status">Searching</span>
@@ -524,7 +727,24 @@
       </button>
     </div>
 
-    {#if results.length > 0}
+    {#if commandMatches.length > 0}
+      <section class="results commands" aria-label="Commands">
+        {#each commandMatches as item, index}
+          <button
+            class:selected={index === selected}
+            class="result command-row"
+            type="button"
+            onclick={() => executeCommand(item.command)}
+          >
+            <span class="command-icon" aria-hidden="true">/</span>
+            <span class="result-text">
+              <span class="name command-name">{item.command}</span>
+              <span class="path command-description">{item.description}</span>
+            </span>
+          </button>
+        {/each}
+      </section>
+    {:else if results.length > 0}
       <section class="results" aria-label="Search results">
         {#each results as result, index}
           <button
