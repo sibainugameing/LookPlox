@@ -1,7 +1,10 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+  atomic::{AtomicBool, AtomicUsize, Ordering},
+  Arc, Mutex,
+};
 use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::doc;
@@ -16,12 +19,34 @@ use walkdir::WalkDir;
 
 pub struct AppState {
   pub engine: Arc<SearchEngine>,
+  pub indexing: Arc<IndexingState>,
+  pub initialized: Arc<AtomicBool>,
+  pub watcher_started: Arc<AtomicBool>,
+}
+
+pub struct IndexingState {
+  pub running: AtomicBool,
+  pub indexed: AtomicUsize,
+  pub error: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SearchResult {
   pub name: String,
   pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SetupState {
+  pub initialized: bool,
+  pub roots: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IndexingStatus {
+  pub running: bool,
+  pub indexed: usize,
+  pub error: Option<String>,
 }
 
 pub struct SearchEngine {
@@ -155,8 +180,6 @@ impl SearchEngine {
     let mut query_parser =
       tantivy::query::QueryParser::for_index(&self.index, vec![self.name_field]);
 
-    // Every indexed n-gram must match, which turns an n-gram index into a
-    // practical substring search for the current MVP.
     query_parser.set_conjunction_by_default();
 
     let parsed = query_parser
@@ -195,28 +218,54 @@ impl SearchEngine {
   }
 }
 
-fn default_roots() -> Vec<PathBuf> {
-  let Some(home) = dirs::home_dir() else {
-    return Vec::new();
-  };
-
-  [
-    home.join("Desktop"),
-    home.join("Documents"),
-    home.join("Downloads"),
-    home.join("Pictures"),
-    home.join("Music"),
-    home.join("Movies"),
-  ]
-  .into_iter()
-  .filter(|path| path.is_dir())
-  .collect()
+fn marker_path(app: &AppHandle) -> Result<PathBuf, String> {
+  app.path()
+    .app_data_dir()
+    .map(|dir| dir.join(".initialized"))
+    .map_err(|error| error.to_string())
 }
 
-fn initial_scan(engine: Arc<SearchEngine>, roots: Vec<PathBuf>) -> Result<(), String> {
-  engine.clear().map_err(|error| error.to_string())?;
+fn roots_path(app: &AppHandle) -> Result<PathBuf, String> {
+  app.path()
+    .app_data_dir()
+    .map(|dir| dir.join("index-roots.json"))
+    .map_err(|error| error.to_string())
+}
 
-  let mut indexed_since_commit = 0usize;
+fn read_roots(app: &AppHandle) -> Result<Vec<PathBuf>, String> {
+  let path = roots_path(app)?;
+  if !path.exists() {
+    return Ok(Vec::new());
+  }
+
+  let content = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+  let roots: Vec<String> =
+    serde_json::from_str(&content).map_err(|error| error.to_string())?;
+
+  Ok(roots.into_iter().map(PathBuf::from).collect())
+}
+
+fn save_roots(app: &AppHandle, roots: &[PathBuf]) -> Result<(), String> {
+  let path = roots_path(app)?;
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+  }
+
+  let serialized: Vec<String> = roots
+    .iter()
+    .map(|root| root.to_string_lossy().into_owned())
+    .collect();
+
+  let content = serde_json::to_string_pretty(&serialized).map_err(|error| error.to_string())?;
+  std::fs::write(path, content).map_err(|error| error.to_string())
+}
+
+fn initial_scan(
+  engine: Arc<SearchEngine>,
+  roots: Vec<PathBuf>,
+  indexing: Arc<IndexingState>,
+) -> Result<(), String> {
+  engine.clear().map_err(|error| error.to_string())?;
 
   for root in roots {
     for entry in WalkDir::new(root)
@@ -230,24 +279,20 @@ fn initial_scan(engine: Arc<SearchEngine>, roots: Vec<PathBuf>) -> Result<(), St
         continue;
       }
 
+      indexing.indexed.fetch_add(1, Ordering::Relaxed);
+
       if let Err(error) = engine.upsert_path(path) {
         eprintln!("LookPlox skipped {:?}: {error}", path);
         continue;
       }
 
-      indexed_since_commit += 1;
-
-      if indexed_since_commit >= 1000 {
+      if indexing.indexed.load(Ordering::Relaxed) % 1000 == 0 {
         engine.commit().map_err(|error| error.to_string())?;
-        indexed_since_commit = 0;
       }
     }
   }
 
-  if indexed_since_commit > 0 {
-    engine.commit().map_err(|error| error.to_string())?;
-  }
-
+  engine.commit().map_err(|error| error.to_string())?;
   Ok(())
 }
 
@@ -300,6 +345,124 @@ fn start_watcher(engine: Arc<SearchEngine>, roots: Vec<PathBuf>) {
   });
 }
 
+fn start_watcher_once(app_state: &AppState, roots: Vec<PathBuf>) {
+  if app_state
+    .watcher_started
+    .swap(true, Ordering::SeqCst)
+  {
+    return;
+  }
+
+  start_watcher(Arc::clone(&app_state.engine), roots);
+}
+
+#[tauri::command]
+fn get_setup_state(app: AppHandle) -> Result<SetupState, String> {
+  let marker = marker_path(&app)?;
+  let roots = read_roots(&app)?;
+  let initialized = marker.exists() && !roots.is_empty();
+
+  Ok(SetupState {
+    initialized,
+    roots: roots
+      .into_iter()
+      .map(|root| root.to_string_lossy().into_owned())
+      .collect(),
+  })
+}
+
+#[tauri::command]
+fn get_indexing_status(state: State<'_, AppState>) -> IndexingStatus {
+  let error = state
+    .indexing
+    .error
+    .lock()
+    .ok()
+    .and_then(|value| value.clone());
+
+  IndexingStatus {
+    running: state.indexing.running.load(Ordering::Relaxed),
+    indexed: state.indexing.indexed.load(Ordering::Relaxed),
+    error,
+  }
+}
+
+#[tauri::command]
+fn start_indexing(
+  app: AppHandle,
+  state: State<'_, AppState>,
+  roots: Vec<String>,
+) -> Result<(), String> {
+  if roots.is_empty() {
+    return Err("Add at least one folder to continue.".into());
+  }
+
+  if state.indexing.running.load(Ordering::SeqCst) {
+    return Err("Indexing is already running.".into());
+  }
+
+  let normalized: Vec<PathBuf> = roots
+    .into_iter()
+    .map(PathBuf::from)
+    .filter(|root| root.is_dir())
+    .collect();
+
+  if normalized.is_empty() {
+    return Err("None of the selected folders are available.".into());
+  }
+
+  let marker = marker_path(&app)?;
+  save_roots(&app, &normalized)?;
+
+  let _ = std::fs::remove_file(&marker);
+
+  if state
+    .indexing
+    .running
+    .swap(true, Ordering::SeqCst)
+  {
+    return Err("Indexing is already running.".into());
+  }
+
+  state.indexing.indexed.store(0, Ordering::Relaxed);
+  if let Ok(mut error) = state.indexing.error.lock() {
+    *error = None;
+  }
+
+  start_watcher_once(&state, normalized.clone());
+
+  let engine = Arc::clone(&state.engine);
+  let indexing = Arc::clone(&state.indexing);
+  let initialized = Arc::clone(&state.initialized);
+
+  std::thread::spawn(move || {
+    let result = initial_scan(engine, normalized, Arc::clone(&indexing));
+
+    match result {
+      Ok(()) => {
+        if let Err(error) = std::fs::write(&marker, b"1") {
+          if let Ok(mut status_error) = indexing.error.lock() {
+            *status_error = Some(format!("Could not save initialization state: {error}"));
+          }
+          initialized.store(false, Ordering::SeqCst);
+        } else {
+          initialized.store(true, Ordering::SeqCst);
+        }
+      }
+      Err(error) => {
+        initialized.store(false, Ordering::SeqCst);
+        if let Ok(mut status_error) = indexing.error.lock() {
+          *status_error = Some(format!("Initial indexing failed: {error}"));
+        }
+      }
+    }
+
+    indexing.running.store(false, Ordering::SeqCst);
+  });
+
+  Ok(())
+}
+
 #[tauri::command]
 fn search_files(
   state: State<'_, AppState>,
@@ -338,62 +501,45 @@ fn open_path(path: String) -> Result<(), String> {
   Ok(())
 }
 
-fn setup_app(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-  let data_dir = app.path().app_data_dir()?;
-  std::fs::create_dir_all(&data_dir)?;
-
-  let index_dir = data_dir.join("index");
-  let engine = Arc::new(SearchEngine::open(&index_dir)?);
-
-  app.manage(AppState {
-    engine: Arc::clone(&engine),
-  });
-
-  let roots = default_roots();
-
-  start_watcher(Arc::clone(&engine), roots.clone());
-
-  if !data_dir.join(".initialized").exists() {
-    let engine_for_scan = Arc::clone(&engine);
-    let marker = data_dir.join(".initialized");
-
-    std::thread::spawn(move || {
-      match initial_scan(engine_for_scan, roots) {
-        Ok(()) => {
-          if let Err(error) = std::fs::write(marker, b"1") {
-            eprintln!("LookPlox failed to write index marker: {error}");
-          }
-        }
-        Err(error) => {
-          eprintln!("LookPlox initial index failed: {error}");
-        }
-      }
-    });
-  }
-
-  Ok(())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  let indexing = Arc::new(IndexingState {
+    running: AtomicBool::new(false),
+    indexed: AtomicUsize::new(0),
+    error: Mutex::new(None),
+  });
+
+  let initialized = Arc::new(AtomicBool::new(false));
+  let watcher_started = Arc::new(AtomicBool::new(false));
+
   tauri::Builder::default()
+    .plugin(tauri_plugin_dialog::init())
     .plugin(
       tauri_plugin_global_shortcut::Builder::new()
-        .with_handler(move |app, shortcut, event| {
-          let hotkey = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+        .with_handler({
+          let initialized = Arc::clone(&initialized);
+          move |app, shortcut, event| {
+            let hotkey = Shortcut::new(Some(Modifiers::ALT), Code::Space);
 
-          if shortcut == &hotkey && event.state() == ShortcutState::Pressed {
-            if let Some(window) = app.get_webview_window("main") {
-              match window.is_visible() {
-                Ok(true) => {
-                  let _ = window.hide();
-                }
-                Ok(false) => {
+            if shortcut == &hotkey && event.state() == ShortcutState::Pressed {
+              if let Some(window) = app.get_webview_window("main") {
+                if !initialized.load(Ordering::SeqCst) {
                   let _ = window.show();
                   let _ = window.set_focus();
+                  return;
                 }
-                Err(error) => {
-                  eprintln!("LookPlox failed to check window visibility: {error}");
+
+                match window.is_visible() {
+                  Ok(true) => {
+                    let _ = window.hide();
+                  }
+                  Ok(false) => {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                  }
+                  Err(error) => {
+                    eprintln!("LookPlox failed to check window visibility: {error}");
+                  }
                 }
               }
             }
@@ -401,18 +547,50 @@ pub fn run() {
         })
         .build(),
     )
-    .setup(|app| {
-      setup_app(app.handle())?;
+    .setup({
+      let indexing = Arc::clone(&indexing);
+      let initialized = Arc::clone(&initialized);
+      let watcher_started = Arc::clone(&watcher_started);
+      move |app| {
+        let data_dir = app.path().app_data_dir()?;
+        std::fs::create_dir_all(&data_dir)?;
 
-      #[cfg(desktop)]
-      {
-        let hotkey = Shortcut::new(Some(Modifiers::ALT), Code::Space);
-        app.global_shortcut().register(hotkey)?;
+        let index_dir = data_dir.join("index");
+        let engine = Arc::new(SearchEngine::open(&index_dir)?);
+
+        let roots = read_roots(app.handle())?;
+        let is_initialized = marker_path(app.handle())?.exists() && !roots.is_empty();
+
+        initialized.store(is_initialized, Ordering::SeqCst);
+
+        app.manage(AppState {
+          engine: Arc::clone(&engine),
+          indexing: Arc::clone(&indexing),
+          initialized: Arc::clone(&initialized),
+          watcher_started: Arc::clone(&watcher_started),
+        });
+
+        if is_initialized {
+          start_watcher(Arc::clone(&engine), roots);
+          watcher_started.store(true, Ordering::SeqCst);
+        }
+
+        #[cfg(desktop)]
+        {
+          let hotkey = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+          app.global_shortcut().register(hotkey)?;
+        }
+
+        Ok(())
       }
-
-      Ok(())
     })
-    .invoke_handler(tauri::generate_handler![search_files, open_path])
+    .invoke_handler(tauri::generate_handler![
+      get_setup_state,
+      get_indexing_status,
+      start_indexing,
+      search_files,
+      open_path
+    ])
     .run(tauri::generate_context!())
     .expect("error while running LookPlox");
 }
