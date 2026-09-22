@@ -2,7 +2,6 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { register } from "@tauri-apps/plugin-global-shortcut";
 
   type SearchResult = {
     name: string;
@@ -107,16 +106,15 @@
   }
 
   onMount(async () => {
-    try {
-      await register("CommandOrControl+Shift+Space", showSearchWindow);
-    } catch (error) {
-      console.error("LookPlox shortcut registration failed:", error);
-    }
-
-    const unlistenFocus = await windowHandle.onFocusChanged(({ payload }) => {
+    const unlistenFocus = await windowHandle.onFocusChanged(async ({ payload }) => {
       if (!payload) {
-        void windowHandle.hide();
+        await windowHandle.hide();
+        return;
       }
+
+      await tick();
+      input?.focus();
+      input?.select();
     });
 
     return () => {
