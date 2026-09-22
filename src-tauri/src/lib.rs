@@ -123,7 +123,7 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
       [],
       |row| {
         Ok(AppSettings {
-          result_limit: row.get(0)?,
+          result_limit: row.get::<_, i64>(0)? as usize,
           show_paths: row.get::<_, i64>(1)? != 0,
           theme: row.get(2)?,
           hide_on_blur: row.get::<_, i64>(3)? != 0,
@@ -151,7 +151,7 @@ fn write_settings(connection: &Connection, settings: &AppSettings) -> Result<(),
       params![
         settings.result_limit as i64,
         if settings.show_paths { 1i64 } else { 0i64 },
-        settings.theme,
+        settings.theme.as_str(),
         if settings.hide_on_blur { 1i64 } else { 0i64 },
       ],
     )
