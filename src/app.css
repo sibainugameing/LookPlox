@@ -229,16 +229,20 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 
 .config-shell {
   width: 100%;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 18px;
+  padding: 12px;
 }
 
 .settings-card {
   box-sizing: border-box;
   width: 100%;
-  min-height: 484px;
-  padding: 26px 28px;
+  height: 100%;
+  min-height: 0;
+  max-height: 596px;
+  overflow-y: auto;
+  padding: 24px 28px;
   border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 28px;
   background: rgba(247, 247, 248, 0.86);
@@ -286,7 +290,7 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 }
 
 .settings-section {
-  margin-top: 24px;
+  margin-top: 22px;
 }
 
 .settings-section-heading {
@@ -299,11 +303,135 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
   color: rgba(40, 40, 44, 0.68);
 }
 
+.settings-options {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 9px 12px;
+  box-sizing: border-box;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.38);
+  cursor: pointer;
+}
+
+.settings-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.settings-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(35, 35, 38, 0.84);
+}
+
+.settings-description {
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(60, 60, 64, 0.52);
+}
+
+.settings-row select {
+  flex: 0 0 auto;
+  min-width: 94px;
+  padding: 7px 26px 7px 9px;
+  border: 1px solid rgba(70, 70, 74, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.62);
+  color: rgba(30, 30, 34, 0.82);
+  outline: none;
+}
+
+.settings-switch {
+  appearance: none;
+  flex: 0 0 auto;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(60, 60, 65, 0.16);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 120ms ease;
+}
+
+.settings-switch:checked {
+  background: rgba(35, 35, 38, 0.78);
+}
+
+.settings-switch:checked::after {
+  transform: translateX(18px);
+}
+
+.settings-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 9px 12px;
+  box-sizing: border-box;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.secondary-action {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(60, 60, 65, 0.09);
+  color: rgba(35, 35, 38, 0.76);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.secondary-action:hover:not(:disabled) {
+  background: rgba(60, 60, 65, 0.14);
+}
+
+.secondary-action:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .settings-roots {
   display: grid;
   gap: 6px;
-  max-height: 220px;
+  max-height: 148px;
   overflow-y: auto;
+}
+
+.settings-roots.compact-roots {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(70, 70, 74, 0.08);
+}
+
+.settings-section-heading.subheading {
+  margin: 0 0 7px;
+  font-size: 11px;
 }
 
 .settings-root-row {
@@ -333,13 +461,37 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
   margin-top: 10px;
 }
 
+.settings-about {
+  margin-top: 20px;
+}
+
+.about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 11px;
+  color: rgba(60, 60, 64, 0.56);
+}
+
+.about-row + .about-row {
+  border-top: 1px solid rgba(70, 70, 74, 0.08);
+}
+
+.about-row strong {
+  color: rgba(35, 35, 38, 0.74);
+  font-weight: 650;
+}
+
 .settings-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 22px;
+  margin-top: 18px;
   min-height: 40px;
+  padding-top: 2px;
   font-size: 11px;
   color: rgba(60, 60, 64, 0.50);
 }
@@ -356,6 +508,8 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 
 .help-card {
   min-height: 324px;
+  height: auto;
+  max-height: 324px;
 }
 
 .command-help-list {
@@ -379,4 +533,126 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 
 .command-help-row:hover {
   background: rgba(255, 255, 255, 0.60);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color: rgba(245, 245, 247, 0.94);
+  }
+
+  :root:not([data-theme="light"]) .search-bar,
+  :root:not([data-theme="light"]) .results,
+  :root:not([data-theme="light"]) .setup-card,
+  :root:not([data-theme="light"]) .settings-card {
+    background: rgba(36, 37, 41, 0.88);
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow:
+      0 24px 55px rgba(0, 0, 0, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+}
+
+:root[data-theme="dark"] {
+  color: rgba(245, 245, 247, 0.94);
+}
+
+:root[data-theme="dark"] .search-bar,
+:root[data-theme="dark"] .results,
+:root[data-theme="dark"] .setup-card,
+:root[data-theme="dark"] .settings-card {
+  background: rgba(36, 37, 41, 0.88);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 24px 55px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] input {
+  color: rgba(248, 248, 250, 0.98);
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] .path,
+:root[data-theme="dark"] .settings-description,
+:root[data-theme="dark"] .settings-footer,
+:root[data-theme="dark"] .settings-header p,
+:root[data-theme="dark"] .setup-header p,
+:root[data-theme="dark"] .about-row {
+  color: rgba(225, 225, 230, 0.58);
+}
+
+:root[data-theme="dark"] .result.selected,
+:root[data-theme="dark"] .settings-row,
+:root[data-theme="dark"] .settings-action-row,
+:root[data-theme="dark"] .settings-root-row,
+:root[data-theme="dark"] .command-help-row {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+:root[data-theme="dark"] .icon,
+:root[data-theme="dark"] .command-icon,
+:root[data-theme="dark"] .add-index-folder,
+:root[data-theme="dark"] .settings-back,
+:root[data-theme="dark"] .add-folder,
+:root[data-theme="dark"] .secondary-action,
+:root[data-theme="dark"] .cancel-indexing {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(245, 245, 247, 0.76);
+}
+
+:root[data-theme="dark"] .settings-title,
+:root[data-theme="dark"] .about-row strong {
+  color: rgba(245, 245, 247, 0.86);
+}
+
+:root[data-theme="dark"] .settings-row select {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(245, 245, 247, 0.88);
+}
+
+:root[data-theme="dark"] .settings-switch {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+:root[data-theme="dark"] .settings-switch:checked {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+:root[data-theme="dark"] .settings-switch:checked::after {
+  background: rgba(35, 35, 38, 0.94);
+}
+
+:root[data-theme="dark"] .settings-section-heading,
+:root[data-theme="dark"] .setup-kicker,
+:root[data-theme="dark"] .roots-heading {
+  color: rgba(225, 225, 230, 0.56);
+}
+
+:root[data-theme="dark"] .root-path,
+:root[data-theme="dark"] .name {
+  color: rgba(245, 245, 247, 0.88);
+}
+
+:root[data-theme="dark"] .root-count {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(245, 245, 247, 0.58);
+}
+
+:root[data-theme="dark"] .folder-icon {
+  color: rgba(130, 178, 220, 0.88);
+}
+
+:root[data-theme="dark"] .file-icon {
+  color: rgba(220, 220, 225, 0.72);
+}
+
+:root[data-theme="dark"] .about-row + .about-row,
+:root[data-theme="dark"] .settings-roots.compact-roots {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] .settings-footer > div.error,
+:root[data-theme="dark"] .setup-footer > span.error {
+  color: rgba(255, 130, 130, 0.82);
 }
