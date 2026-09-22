@@ -36,7 +36,7 @@
     description: string;
   };
 
-  const SETTINGS_KEY = "lookplox.settings";
+  const LEGACY_SETTINGS_KEY = "lookplox.settings";
   const DEFAULT_SETTINGS: Settings = {
     resultLimit: 12,
     showPaths: true,
@@ -73,47 +73,67 @@
 
   const windowHandle = getCurrentWindow();
 
-  function loadSettings() {
-    try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      if (!raw) {
-        settings = { ...DEFAULT_SETTINGS };
-        return;
-      }
+  function normalizeSettings(parsed: Partial<Settings>): Settings {
+    return {
+      resultLimit:
+        typeof parsed.resultLimit === "number" && [6, 12, 24, 50].includes(parsed.resultLimit)
+          ? parsed.resultLimit
+          : DEFAULT_SETTINGS.resultLimit,
+      showPaths:
+        typeof parsed.showPaths === "boolean"
+          ? parsed.showPaths
+          : DEFAULT_SETTINGS.showPaths,
+      theme:
+        parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
+          ? parsed.theme
+          : DEFAULT_SETTINGS.theme,
+      hideOnBlur:
+        typeof parsed.hideOnBlur === "boolean"
+          ? parsed.hideOnBlur
+          : DEFAULT_SETTINGS.hideOnBlur,
+    };
+  }
 
-      const parsed = JSON.parse(raw) as Partial<Settings>;
-      settings = {
-        resultLimit:
-          typeof parsed.resultLimit === "number" && [6, 12, 24, 50].includes(parsed.resultLimit)
-            ? parsed.resultLimit
-            : DEFAULT_SETTINGS.resultLimit,
-        showPaths:
-          typeof parsed.showPaths === "boolean"
-            ? parsed.showPaths
-            : DEFAULT_SETTINGS.showPaths,
-        theme:
-          parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
-            ? parsed.theme
-            : DEFAULT_SETTINGS.theme,
-        hideOnBlur:
-          typeof parsed.hideOnBlur === "boolean"
-            ? parsed.hideOnBlur
-            : DEFAULT_SETTINGS.hideOnBlur,
-      };
-    } catch {
+  async function loadSettings() {
+    try {
+      const stored = await invoke<Settings>("get_settings");
+      settings = normalizeSettings(stored);
+
+      const legacyRaw = localStorage.getItem(LEGACY_SETTINGS_KEY);
+      if (legacyRaw) {
+        try {
+          const legacyParsed = JSON.parse(legacyRaw) as Partial<Settings>;
+          const migrated = normalizeSettings(legacyParsed);
+
+          await invoke("save_settings", { settings: migrated });
+          settings = migrated;
+        } catch {
+          // Ignore an invalid legacy value and keep the SQLite settings.
+        }
+
+        localStorage.removeItem(LEGACY_SETTINGS_KEY);
+      }
+    } catch (error) {
+      console.error("LookPlox settings could not be loaded from SQLite:", error);
       settings = { ...DEFAULT_SETTINGS };
     }
 
     applyTheme();
   }
 
+  let settingsSaveQueue: Promise<void> = Promise.resolve();
+
   function saveSettings() {
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    } catch {
-      // Settings are optional; keep the current in-memory values.
-    }
     applyTheme();
+
+    const snapshot = { ...settings };
+    settingsSaveQueue = settingsSaveQueue
+      .then(async () => {
+        await invoke("save_settings", { settings: snapshot });
+      })
+      .catch((error) => {
+        console.error("LookPlox settings could not be saved to SQLite:", error);
+      });
   }
 
   function updateSettings(patch: Partial<Settings>) {
@@ -637,10 +657,9 @@
   onMount(() => {
     let unlistenFocus: (() => void) | undefined;
 
-    loadSettings();
-    applyTheme();
-
     const initialize = async () => {
+      await loadSettings();
+
       try {
         const state = await invoke<SetupState>("get_setup_state");
         roots = state.roots;
