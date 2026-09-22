@@ -95,10 +95,9 @@ impl SearchEngine {
   }
 
   pub fn upsert_path(&self, path: &Path) -> tantivy::Result<()> {
-    let metadata = match std::fs::metadata(path) {
-      Ok(metadata) if metadata.is_file() => metadata,
-      _ => return Ok(()),
-    };
+    if !matches!(std::fs::metadata(path), Ok(metadata) if metadata.is_file()) {
+      return Ok(());
+    }
 
     let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
       return Ok(());
@@ -117,10 +116,6 @@ impl SearchEngine {
       self.name_field => name.to_string(),
       self.path_field => path_string,
     ))?;
-
-    // Keep the metadata read here so failed filesystem reads are surfaced
-    // during indexing without putting file contents into the search index.
-    let _ = metadata.len();
 
     Ok(())
   }
@@ -168,14 +163,14 @@ impl SearchEngine {
       .map_err(|error| error.to_string())?;
 
     let top_docs = searcher
-      .search(&parsed, &TopDocs::with_limit(limit.clamp(1, 50)))
+      .search(&parsed, &TopDocs::with_limit(limit.clamp(1, 50)).order_by_score())
       .map_err(|error| error.to_string())?;
 
     let mut results = Vec::with_capacity(top_docs.len());
 
     for (_, address) in top_docs {
       let doc: TantivyDocument = searcher
-        .doc(address)
+        .doc::<TantivyDocument>(address)
         .map_err(|error| error.to_string())?;
 
       let name = doc
