@@ -772,10 +772,6 @@ fn add_index_root(
 ) -> Result<Vec<String>, String> {
   let root_path = PathBuf::from(root);
 
-  if !root_path.is_dir() {
-    return Err("The selected folder is not available.".into());
-  }
-
   if state.indexing.running.load(Ordering::SeqCst) {
     return Err("Indexing is already running.".into());
   }
