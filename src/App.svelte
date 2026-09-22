@@ -50,6 +50,7 @@
   let setupError = "";
   let indexMessage = "";
   let indexPoll: number | undefined;
+  let folderPickerOpen = false;
 
   const windowHandle = getCurrentWindow();
 
@@ -120,6 +121,7 @@
 
   async function addFolder() {
     setupError = "";
+    folderPickerOpen = true;
 
     try {
       const selectedPath = await open({
@@ -134,6 +136,8 @@
       }
     } catch (error) {
       setupError = "Could not open the folder picker: " + String(error);
+    } finally {
+      folderPickerOpen = false;
     }
   }
 
@@ -224,6 +228,7 @@
   async function addIndexFolder() {
     setupError = "";
     indexMessage = "";
+    folderPickerOpen = true;
 
     try {
       const selectedPath = await open({
@@ -287,6 +292,8 @@
     } catch (error) {
       setupError = String(error);
       indexMessage = "";
+    } finally {
+      folderPickerOpen = false;
     }
   }
 
@@ -493,7 +500,7 @@
 
         unlistenFocus = await windowHandle.onFocusChanged(async ({ payload }) => {
           if (!payload) {
-            if (!setupMode && viewMode === "search") {
+            if (!setupMode && viewMode === "search" && !folderPickerOpen) {
               await windowHandle.hide();
             }
             return;
