@@ -9,7 +9,7 @@ use std::sync::{
 use std::time::Duration;
 use tantivy::collector::TopDocs;
 use tantivy::doc;
-use tantivy::query::{BooleanQuery, Query, TermQuery};
+use tantivy::query::{BooleanQuery, PrefixQuery, Query, TermQuery};
 use tantivy::schema::{
   Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
 };
@@ -183,6 +183,53 @@ impl SearchEngine {
       .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
 
     writer.delete_term(Term::from_field_text(self.path_field, path_string.as_ref()));
+    writer.commit()?;
+    self.reader.reload()?;
+    Ok(())
+  }
+
+  pub fn remove_subtree(&self, path: &Path) -> tantivy::Result<()> {
+    let raw_path = path.to_string_lossy().into_owned();
+    let normalized_path = raw_path.trim_end_matches(['/', '\\']).to_string();
+    let prefix = if normalized_path.is_empty() {
+      raw_path.clone()
+    } else {
+      format!("{}{}", normalized_path, std::path::MAIN_SEPARATOR)
+    };
+
+    let searcher = self.reader.searcher();
+    let query = PrefixQuery::new(Term::from_field_text(self.path_field, &prefix));
+    let top_docs = searcher.search(&query, &TopDocs::with_limit(1_000_000))?;
+
+    let mut paths_to_remove = Vec::with_capacity(top_docs.len() + 2);
+    if !raw_path.is_empty() {
+      paths_to_remove.push(raw_path);
+    }
+    if !normalized_path.is_empty() {
+      paths_to_remove.push(normalized_path);
+    }
+
+    for (_, address) in top_docs {
+      let document: TantivyDocument = searcher.doc::<TantivyDocument>(address)?;
+      if let Some(value) = document
+        .get_first(self.path_field)
+        .and_then(|value| value.as_str())
+      {
+        paths_to_remove.push(value.to_owned());
+      }
+    }
+
+    drop(searcher);
+
+    let mut writer = self
+      .writer
+      .lock()
+      .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
+
+    for path_string in paths_to_remove {
+      writer.delete_term(Term::from_field_text(self.path_field, &path_string));
+    }
+
     writer.commit()?;
     self.reader.reload()?;
     Ok(())
@@ -492,7 +539,7 @@ fn process_event(
         }
       }
     } else if !path.exists() {
-      if let Err(error) = engine.remove_path(&path) {
+      if let Err(error) = engine.remove_subtree(&path) {
         eprintln!("LookPlox failed to remove {:?}: {error}", path);
       } else {
         changed = true;
@@ -791,6 +838,58 @@ fn add_index_root(
 }
 
 #[tauri::command]
+fn remove_index_root(
+  app: AppHandle,
+  state: State<'_, AppState>,
+  root: String,
+) -> Result<Vec<String>, String> {
+  let root_path = PathBuf::from(root);
+
+  if !root_path.is_dir() {
+    return Err("The selected folder is not available.".into());
+  }
+
+  if state.indexing.running.load(Ordering::SeqCst) {
+    return Err("Indexing is already running.".into());
+  }
+
+  let roots = {
+    let mut active = state
+      .active_roots
+      .lock()
+      .map_err(|_| "Index root state is unavailable.".to_string())?;
+
+    if active.len() <= 1 {
+      return Err("LookPlox needs at least one tracked folder.".into());
+    }
+
+    let before = active.len();
+    active.retain(|item| item != &root_path);
+
+    if active.len() == before {
+      return Ok(active
+        .iter()
+        .map(|item| item.to_string_lossy().into_owned())
+        .collect());
+    }
+
+    active.clone()
+  };
+
+  save_roots(&app, &roots)?;
+  state.engine.remove_subtree(&root_path).map_err(|error| error.to_string())?;
+
+  if let Ok(mut watched) = state.watched_roots.lock() {
+    watched.remove(&root_path);
+  }
+
+  Ok(roots
+    .into_iter()
+    .map(|item| item.to_string_lossy().into_owned())
+    .collect())
+}
+
+#[tauri::command]
 fn cancel_indexing(state: State<'_, AppState>) -> Result<(), String> {
   if !state.indexing.running.load(Ordering::SeqCst) {
     return Ok(());
@@ -965,6 +1064,7 @@ pub fn run() {
       start_indexing,
       cancel_indexing,
       add_index_root,
+      remove_index_root,
       search_files,
       open_path
     ])
