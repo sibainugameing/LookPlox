@@ -52,6 +52,12 @@ pub struct SearchResult {
   pub preview: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SearchResponse {
+  pub results: Vec<SearchResult>,
+  pub suggestion: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -391,6 +397,37 @@ pub struct SearchEngine {
   is_dir_field: Field,
 }
 
+fn edit_distance(left: &str, right: &str) -> usize {
+  let right_chars: Vec<char> = right.chars().collect();
+  let mut previous: Vec<usize> = (0..=right_chars.len()).collect();
+
+  for (row, left_char) in left.chars().enumerate() {
+    let mut current = vec![row + 1; right_chars.len() + 1];
+
+    for (column, right_char) in right_chars.iter().enumerate() {
+      let substitution = previous[column] + usize::from(left_char != *right_char);
+      let insertion = current[column] + 1;
+      let deletion = previous[column + 1] + 1;
+
+      current[column + 1] = substitution.min(insertion).min(deletion);
+    }
+
+    previous = current;
+  }
+
+  previous[right_chars.len()]
+}
+
+fn application_extension_trimmed(name: &str) -> &str {
+  for suffix in [".app", ".exe", ".lnk", ".desktop"] {
+    if name.len() > suffix.len() && name.to_ascii_lowercase().ends_with(suffix) {
+      return &name[..name.len() - suffix.len()];
+    }
+  }
+
+  name
+}
+
 impl SearchEngine {
   pub fn open(index_dir: &Path) -> tantivy::Result<Self> {
     std::fs::create_dir_all(index_dir)?;
@@ -584,10 +621,13 @@ impl SearchEngine {
     query: &str,
     limit: usize,
     applications_only: bool,
-  ) -> Result<Vec<SearchResult>, String> {
+  ) -> Result<SearchResponse, String> {
     let normalized = query.trim().to_lowercase();
     if normalized.is_empty() {
-      return Ok(Vec::new());
+      return Ok(SearchResponse {
+        results: Vec::new(),
+        suggestion: None,
+      });
     }
 
     let mut analyzer = self
@@ -606,7 +646,10 @@ impl SearchEngine {
     });
 
     if tokens.is_empty() {
-      return Ok(Vec::new());
+      return Ok(SearchResponse {
+        results: Vec::new(),
+        suggestion: None,
+      });
     }
 
     let clauses: Vec<Box<dyn Query>> = tokens
@@ -692,9 +735,127 @@ impl SearchEngine {
       }
     }
 
-    Ok(results)
+    let suggestion = if results.is_empty() {
+      self.suggest(&normalized, applications_only)?
+    } else {
+      None
+    };
+
+    Ok(SearchResponse {
+      results,
+      suggestion,
+    })
   }
 
+  fn suggest(&self, query: &str, applications_only: bool) -> Result<Option<String>, String> {
+    let normalized = query.trim().to_lowercase();
+    if normalized.chars().count() < 2 {
+      return Ok(None);
+    }
+
+    let mut analyzer = self
+      .index
+      .tokenizers()
+      .get("filename_ngram")
+      .ok_or_else(|| "Search tokenizer is unavailable.".to_string())?;
+
+    let mut stream = analyzer.token_stream(&normalized);
+    let mut tokens = Vec::<String>::new();
+
+    stream.process(&mut |token| {
+      if token.text.chars().count() >= 2
+        && token.text.chars().count() <= 4
+        && !tokens.iter().any(|item| item == &token.text)
+      {
+        tokens.push(token.text.clone());
+      }
+    });
+
+    if tokens.is_empty() {
+      return Ok(None);
+    }
+
+    let clauses: Vec<Box<dyn Query>> = tokens
+      .iter()
+      .map(|token| {
+        Box::new(TermQuery::new(
+          Term::from_field_text(self.name_field, token),
+          IndexRecordOption::Basic,
+        )) as Box<dyn Query>
+      })
+      .collect();
+
+    let mut parsed: Box<dyn Query> = Box::new(BooleanQuery::union(clauses));
+
+    if applications_only {
+      if let Some(pattern) = application_path_pattern() {
+        let application_filter: Box<dyn Query> = Box::new(
+          RegexQuery::from_pattern(pattern, self.path_field)
+            .map_err(|error| error.to_string())?,
+        );
+        parsed = Box::new(BooleanQuery::intersection(vec![parsed, application_filter]));
+      }
+    }
+
+    let searcher = self.reader.searcher();
+    let candidates = searcher
+      .search(&parsed, &TopDocs::with_limit(200).order_by_score())
+      .map_err(|error| error.to_string())?;
+
+    let max_distance = match normalized.chars().count() {
+      0..=4 => 1,
+      5..=7 => 2,
+      _ => (normalized.chars().count() / 3).max(2),
+    };
+
+    let mut best: Option<(usize, usize, String)> = None;
+
+    for (_, address) in candidates {
+      let doc: TantivyDocument = searcher
+        .doc::<TantivyDocument>(address)
+        .map_err(|error| error.to_string())?;
+
+      let name = doc
+        .get_first(self.name_field)
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_owned();
+
+      let path = doc
+        .get_first(self.path_field)
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_owned();
+
+      if name.is_empty() || path.is_empty() {
+        continue;
+      }
+
+      if applications_only && !is_application_path(Path::new(&path)) {
+        continue;
+      }
+
+      let comparable = application_extension_trimmed(&name).to_lowercase();
+      let distance = edit_distance(&normalized, &comparable);
+
+      if distance > max_distance {
+        continue;
+      }
+
+      let length_gap = comparable.chars().count().abs_diff(normalized.chars().count());
+      let candidate = (distance, length_gap, name);
+
+      if best
+        .as_ref()
+        .map(|current| candidate.0 < current.0 || (candidate.0 == current.0 && candidate.1 < current.1))
+        .unwrap_or(true)
+      {
+        best = Some(candidate);
+      }
+    }
+
+    Ok(best.map(|(_, _, name)| name))
+  }
 }
 
 fn marker_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1886,7 +2047,7 @@ fn search_files(
   query: String,
   limit: Option<usize>,
   applications_only: Option<bool>,
-) -> Result<Vec<SearchResult>, String> {
+) -> Result<SearchResponse, String> {
   state.engine.search(
     &query,
     limit.unwrap_or(12),
