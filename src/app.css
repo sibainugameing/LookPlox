@@ -711,16 +711,193 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 }
 
 
+@media (prefers-color-scheme: dark) {
+  /* High-contrast dark theme.
+     Keep every important surface, label, control and divider distinct from the glass background. */
+  :root:not([data-theme="light"]) {
+    color: #f5f7fa;
+  }
+  
+  :root:not([data-theme="light"]) .search-bar,
+  :root:not([data-theme="light"]) .results,
+  :root:not([data-theme="light"]) .setup-card,
+  :root:not([data-theme="light"]) .settings-card {
+    background: rgba(28, 30, 34, 0.96);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow:
+      0 24px 55px rgba(0, 0, 0, 0.58),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  
+  :root:not([data-theme="light"]) input {
+    color: #f7f8fa;
+  }
+  
+  :root:not([data-theme="light"]) input::placeholder {
+    color: rgba(232, 235, 240, 0.72);
+  }
+  
+  :root:not([data-theme="light"]) .prompt {
+    color: rgba(245, 247, 250, 0.92);
+  }
+  
+  :root:not([data-theme="light"]) .status,
+  :root:not([data-theme="light"]) .setup-header p,
+  :root:not([data-theme="light"]) .settings-header p,
+  :root:not([data-theme="light"]) .settings-description,
+  :root:not([data-theme="light"]) .settings-footer,
+  :root:not([data-theme="light"]) .about-row,
+  :root:not([data-theme="light"]) .setup-footer,
+  :root:not([data-theme="light"]) .status-text,
+  :root:not([data-theme="light"]) .settings-storage-note {
+    color: rgba(221, 225, 232, 0.82);
+  }
+  
+  :root:not([data-theme="light"]) .path,
+  :root:not([data-theme="light"]) .settings-path {
+    color: rgba(209, 214, 222, 0.80);
+  }
+  
+  :root:not([data-theme="light"]) .settings-file-path {
+    color: rgba(190, 196, 206, 0.68);
+  }
+  
+  :root:not([data-theme="light"]) .setup-kicker,
+  :root:not([data-theme="light"]) .roots-heading,
+  :root:not([data-theme="light"]) .settings-section-heading {
+    color: rgba(225, 229, 235, 0.84);
+  }
+  
+  :root:not([data-theme="light"]) .name,
+  :root:not([data-theme="light"]) .root-path,
+  :root:not([data-theme="light"]) .settings-title,
+  :root:not([data-theme="light"]) .about-row strong {
+    color: rgba(248, 249, 251, 0.96);
+  }
+  
+  :root:not([data-theme="light"]) .result.selected,
+  :root:not([data-theme="light"]) .settings-row,
+  :root:not([data-theme="light"]) .settings-action-row,
+  :root:not([data-theme="light"]) .settings-root-row,
+  :root:not([data-theme="light"]) .root-row,
+  :root:not([data-theme="light"]) .command-help-row {
+    background: rgba(255, 255, 255, 0.085);
+  }
+  
+  :root:not([data-theme="light"]) .result.selected:hover,
+  :root:not([data-theme="light"]) .command-help-row:hover {
+    background: rgba(255, 255, 255, 0.13);
+  }
+  
+  :root:not([data-theme="light"]) .icon,
+  :root:not([data-theme="light"]) .command-icon,
+  :root:not([data-theme="light"]) .add-index-folder,
+  :root:not([data-theme="light"]) .settings-back,
+  :root:not([data-theme="light"]) .add-folder,
+  :root:not([data-theme="light"]) .secondary-action,
+  :root:not([data-theme="light"]) .cancel-indexing {
+    background: rgba(255, 255, 255, 0.10);
+    color: rgba(244, 246, 249, 0.90);
+  }
+  
+  :root:not([data-theme="light"]) .icon:hover,
+  :root:not([data-theme="light"]) .command-icon:hover,
+  :root:not([data-theme="light"]) .add-index-folder:hover:not(:disabled),
+  :root:not([data-theme="light"]) .settings-back:hover,
+  :root:not([data-theme="light"]) .add-folder:hover,
+  :root:not([data-theme="light"]) .secondary-action:hover:not(:disabled),
+  :root:not([data-theme="light"]) .cancel-indexing:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+  }
+  
+  :root:not([data-theme="light"]) .empty-roots {
+    border-color: rgba(225, 229, 235, 0.28);
+    color: rgba(220, 224, 230, 0.78);
+  }
+  
+  :root:not([data-theme="light"]) .root-count {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(235, 238, 243, 0.82);
+  }
+  
+  :root:not([data-theme="light"]) .remove-root {
+    color: rgba(230, 233, 238, 0.74);
+  }
+  
+  :root:not([data-theme="light"]) .remove-root:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  
+  :root:not([data-theme="light"]) .settings-row select {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: rgba(248, 249, 251, 0.96);
+  }
+  
+  :root:not([data-theme="light"]) .settings-row select:focus {
+    border-color: rgba(255, 255, 255, 0.42);
+  }
+  
+  :root:not([data-theme="light"]) .settings-switch {
+    background: rgba(255, 255, 255, 0.22);
+  }
+  
+  :root:not([data-theme="light"]) .settings-switch:checked {
+    background: rgba(255, 255, 255, 0.82);
+  }
+  
+  :root:not([data-theme="light"]) .settings-switch:checked::after {
+    background: #1c1e22;
+  }
+  
+  :root:not([data-theme="light"]) .progress-track {
+    background: rgba(255, 255, 255, 0.16);
+  }
+  
+  :root:not([data-theme="light"]) .progress-indicator {
+    background: rgba(245, 247, 250, 0.84);
+  }
+  
+  :root:not([data-theme="light"]) .start-indexing {
+    background: #f2f4f7;
+    color: #181a1e;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  
+  :root:not([data-theme="light"]) .start-indexing:hover:not(:disabled) {
+    background: #ffffff;
+  }
+  
+  :root:not([data-theme="light"]) .folder-icon {
+    color: rgba(146, 197, 242, 0.96);
+  }
+  
+  :root:not([data-theme="light"]) .file-icon {
+    color: rgba(229, 232, 237, 0.90);
+  }
+  
+  :root:not([data-theme="light"]) .settings-roots.compact-roots,
+  :root:not([data-theme="light"]) .about-row + .about-row {
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  
+  :root:not([data-theme="light"]) .settings-footer > div.error,
+  :root:not([data-theme="light"]) .setup-footer > span.error,
+  :root:not([data-theme="light"]) .settings-storage-note.error {
+    color: #ffaaa8;
+  }
+}
+
 /* High-contrast dark theme.
    Keep every important surface, label, control and divider distinct from the glass background. */
-:root:not([data-theme="light"]) {
+:root[data-theme="dark"] {
   color: #f5f7fa;
 }
 
-:root:not([data-theme="light"]) .search-bar,
-:root:not([data-theme="light"]) .results,
-:root:not([data-theme="light"]) .setup-card,
-:root:not([data-theme="light"]) .settings-card {
+:root[data-theme="dark"] .search-bar,
+:root[data-theme="dark"] .results,
+:root[data-theme="dark"] .setup-card,
+:root[data-theme="dark"] .settings-card {
   background: rgba(28, 30, 34, 0.96);
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow:
@@ -728,164 +905,163 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-:root:not([data-theme="light"]) input {
+:root[data-theme="dark"] input {
   color: #f7f8fa;
 }
 
-:root:not([data-theme="light"]) input::placeholder {
+:root[data-theme="dark"] input::placeholder {
   color: rgba(232, 235, 240, 0.72);
 }
 
-:root:not([data-theme="light"]) .prompt {
+:root[data-theme="dark"] .prompt {
   color: rgba(245, 247, 250, 0.92);
 }
 
-:root:not([data-theme="light"]) .status,
-:root:not([data-theme="light"]) .setup-header p,
-:root:not([data-theme="light"]) .settings-header p,
-:root:not([data-theme="light"]) .settings-description,
-:root:not([data-theme="light"]) .settings-footer,
-:root:not([data-theme="light"]) .about-row,
-:root:not([data-theme="light"]) .setup-footer,
-:root:not([data-theme="light"]) .status-text,
-:root:not([data-theme="light"]) .settings-storage-note {
+:root[data-theme="dark"] .status,
+:root[data-theme="dark"] .setup-header p,
+:root[data-theme="dark"] .settings-header p,
+:root[data-theme="dark"] .settings-description,
+:root[data-theme="dark"] .settings-footer,
+:root[data-theme="dark"] .about-row,
+:root[data-theme="dark"] .setup-footer,
+:root[data-theme="dark"] .status-text,
+:root[data-theme="dark"] .settings-storage-note {
   color: rgba(221, 225, 232, 0.82);
 }
 
-:root:not([data-theme="light"]) .path,
-:root:not([data-theme="light"]) .settings-path {
+:root[data-theme="dark"] .path,
+:root[data-theme="dark"] .settings-path {
   color: rgba(209, 214, 222, 0.80);
 }
 
-:root:not([data-theme="light"]) .settings-file-path {
+:root[data-theme="dark"] .settings-file-path {
   color: rgba(190, 196, 206, 0.68);
 }
 
-:root:not([data-theme="light"]) .setup-kicker,
-:root:not([data-theme="light"]) .roots-heading,
-:root:not([data-theme="light"]) .settings-section-heading {
+:root[data-theme="dark"] .setup-kicker,
+:root[data-theme="dark"] .roots-heading,
+:root[data-theme="dark"] .settings-section-heading {
   color: rgba(225, 229, 235, 0.84);
 }
 
-:root:not([data-theme="light"]) .name,
-:root:not([data-theme="light"]) .root-path,
-:root:not([data-theme="light"]) .settings-title,
-:root:not([data-theme="light"]) .about-row strong {
+:root[data-theme="dark"] .name,
+:root[data-theme="dark"] .root-path,
+:root[data-theme="dark"] .settings-title,
+:root[data-theme="dark"] .about-row strong {
   color: rgba(248, 249, 251, 0.96);
 }
 
-:root:not([data-theme="light"]) .result.selected,
-:root:not([data-theme="light"]) .settings-row,
-:root:not([data-theme="light"]) .settings-action-row,
-:root:not([data-theme="light"]) .settings-root-row,
-:root:not([data-theme="light"]) .root-row,
-:root:not([data-theme="light"]) .command-help-row {
+:root[data-theme="dark"] .result.selected,
+:root[data-theme="dark"] .settings-row,
+:root[data-theme="dark"] .settings-action-row,
+:root[data-theme="dark"] .settings-root-row,
+:root[data-theme="dark"] .root-row,
+:root[data-theme="dark"] .command-help-row {
   background: rgba(255, 255, 255, 0.085);
 }
 
-:root:not([data-theme="light"]) .result.selected:hover,
-:root:not([data-theme="light"]) .command-help-row:hover {
+:root[data-theme="dark"] .result.selected:hover,
+:root[data-theme="dark"] .command-help-row:hover {
   background: rgba(255, 255, 255, 0.13);
 }
 
-:root:not([data-theme="light"]) .icon,
-:root:not([data-theme="light"]) .command-icon,
-:root:not([data-theme="light"]) .add-index-folder,
-:root:not([data-theme="light"]) .settings-back,
-:root:not([data-theme="light"]) .add-folder,
-:root:not([data-theme="light"]) .secondary-action,
-:root:not([data-theme="light"]) .cancel-indexing {
+:root[data-theme="dark"] .icon,
+:root[data-theme="dark"] .command-icon,
+:root[data-theme="dark"] .add-index-folder,
+:root[data-theme="dark"] .settings-back,
+:root[data-theme="dark"] .add-folder,
+:root[data-theme="dark"] .secondary-action,
+:root[data-theme="dark"] .cancel-indexing {
   background: rgba(255, 255, 255, 0.10);
   color: rgba(244, 246, 249, 0.90);
 }
 
-:root:not([data-theme="light"]) .icon:hover,
-:root:not([data-theme="light"]) .command-icon:hover,
-:root:not([data-theme="light"]) .add-index-folder:hover:not(:disabled),
-:root:not([data-theme="light"]) .settings-back:hover,
-:root:not([data-theme="light"]) .add-folder:hover,
-:root:not([data-theme="light"]) .secondary-action:hover:not(:disabled),
-:root:not([data-theme="light"]) .cancel-indexing:hover:not(:disabled) {
+:root[data-theme="dark"] .icon:hover,
+:root[data-theme="dark"] .command-icon:hover,
+:root[data-theme="dark"] .add-index-folder:hover:not(:disabled),
+:root[data-theme="dark"] .settings-back:hover,
+:root[data-theme="dark"] .add-folder:hover,
+:root[data-theme="dark"] .secondary-action:hover:not(:disabled),
+:root[data-theme="dark"] .cancel-indexing:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.16);
 }
 
-:root:not([data-theme="light"]) .empty-roots {
+:root[data-theme="dark"] .empty-roots {
   border-color: rgba(225, 229, 235, 0.28);
   color: rgba(220, 224, 230, 0.78);
 }
 
-:root:not([data-theme="light"]) .root-count {
+:root[data-theme="dark"] .root-count {
   background: rgba(255, 255, 255, 0.12);
   color: rgba(235, 238, 243, 0.82);
 }
 
-:root:not([data-theme="light"]) .remove-root {
+:root[data-theme="dark"] .remove-root {
   color: rgba(230, 233, 238, 0.74);
 }
 
-:root:not([data-theme="light"]) .remove-root:hover {
+:root[data-theme="dark"] .remove-root:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
-:root:not([data-theme="light"]) .settings-row select {
+:root[data-theme="dark"] .settings-row select {
   background: rgba(255, 255, 255, 0.10);
   border-color: rgba(255, 255, 255, 0.22);
   color: rgba(248, 249, 251, 0.96);
 }
 
-:root:not([data-theme="light"]) .settings-row select:focus {
+:root[data-theme="dark"] .settings-row select:focus {
   border-color: rgba(255, 255, 255, 0.42);
 }
 
-:root:not([data-theme="light"]) .settings-switch {
+:root[data-theme="dark"] .settings-switch {
   background: rgba(255, 255, 255, 0.22);
 }
 
-:root:not([data-theme="light"]) .settings-switch:checked {
+:root[data-theme="dark"] .settings-switch:checked {
   background: rgba(255, 255, 255, 0.82);
 }
 
-:root:not([data-theme="light"]) .settings-switch:checked::after {
+:root[data-theme="dark"] .settings-switch:checked::after {
   background: #1c1e22;
 }
 
-:root:not([data-theme="light"]) .progress-track {
+:root[data-theme="dark"] .progress-track {
   background: rgba(255, 255, 255, 0.16);
 }
 
-:root:not([data-theme="light"]) .progress-indicator {
+:root[data-theme="dark"] .progress-indicator {
   background: rgba(245, 247, 250, 0.84);
 }
 
-:root:not([data-theme="light"]) .start-indexing {
+:root[data-theme="dark"] .start-indexing {
   background: #f2f4f7;
   color: #181a1e;
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-:root:not([data-theme="light"]) .start-indexing:hover:not(:disabled) {
+:root[data-theme="dark"] .start-indexing:hover:not(:disabled) {
   background: #ffffff;
 }
 
-:root:not([data-theme="light"]) .folder-icon {
+:root[data-theme="dark"] .folder-icon {
   color: rgba(146, 197, 242, 0.96);
 }
 
-:root:not([data-theme="light"]) .file-icon {
+:root[data-theme="dark"] .file-icon {
   color: rgba(229, 232, 237, 0.90);
 }
 
-:root:not([data-theme="light"]) .settings-roots.compact-roots,
-:root:not([data-theme="light"]) .about-row + .about-row {
+:root[data-theme="dark"] .settings-roots.compact-roots,
+:root[data-theme="dark"] .about-row + .about-row {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
-:root:not([data-theme="light"]) .settings-footer > div.error,
-:root:not([data-theme="light"]) .setup-footer > span.error,
-:root:not([data-theme="light"]) .settings-storage-note.error {
+:root[data-theme="dark"] .settings-footer > div.error,
+:root[data-theme="dark"] .setup-footer > span.error,
+:root[data-theme="dark"] .settings-storage-note.error {
   color: #ffaaa8;
 }
-
 
 .result-preview {
   display: block;
