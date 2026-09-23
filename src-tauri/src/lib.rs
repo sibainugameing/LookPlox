@@ -343,26 +343,6 @@ fn is_application_path(path: &Path) -> bool {
   }
 }
 
-fn application_path_pattern() -> Option<&'static str> {
-  #[cfg(target_os = "macos")]
-  {
-    return Some(r"(?i)\.app$");
-  }
-
-  #[cfg(target_os = "windows")]
-  {
-    return Some(r"(?i)\.(exe|lnk)$");
-  }
-
-  #[cfg(target_os = "linux")]
-  {
-    return Some(r"(?i)\.desktop$");
-  }
-
-  #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-  None
-}
-
 fn is_app_bundle(path: &Path) -> bool {
   #[cfg(target_os = "macos")]
   {
@@ -668,20 +648,10 @@ impl SearchEngine {
       Box::new(BooleanQuery::intersection(clauses))
     };
 
-    let parsed: Box<dyn Query> = if applications_only {
-      if let Some(pattern) = application_path_pattern() {
-        let application_filter: Box<dyn Query> = Box::new(
-          RegexQuery::from_pattern(pattern, self.path_field)
-            .map_err(|error| error.to_string())?,
-        );
-        Box::new(BooleanQuery::intersection(vec![parsed, application_filter]))
-      } else {
-        parsed
-      }
-    } else {
-      parsed
-    };
-
+    // Application filtering is done against the stored filesystem path below.
+    // Do not use a Tantivy regex query here: the path field is intentionally
+    // optimized for exact path deletion, while the application check is a
+    // platform-specific filesystem rule.
     let searcher = self.reader.searcher();
     let requested_limit = limit.clamp(1, 50);
     let candidate_limit = (requested_limit * 50).clamp(100, 1000);
@@ -785,17 +755,7 @@ impl SearchEngine {
       })
       .collect();
 
-    let mut parsed: Box<dyn Query> = Box::new(BooleanQuery::union(clauses));
-
-    if applications_only {
-      if let Some(pattern) = application_path_pattern() {
-        let application_filter: Box<dyn Query> = Box::new(
-          RegexQuery::from_pattern(pattern, self.path_field)
-            .map_err(|error| error.to_string())?,
-        );
-        parsed = Box::new(BooleanQuery::intersection(vec![parsed, application_filter]));
-      }
-    }
+    let parsed: Box<dyn Query> = Box::new(BooleanQuery::union(clauses));
 
     let searcher = self.reader.searcher();
     let candidates = searcher
