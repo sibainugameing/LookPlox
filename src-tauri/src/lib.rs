@@ -7,7 +7,7 @@ use std::sync::{
   atomic::{AtomicBool, AtomicUsize, Ordering},
   Arc, Mutex,
 };
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use tantivy::collector::TopDocs;
 use tantivy::doc;
@@ -1403,7 +1403,7 @@ fn create_app_preview(path: &Path) -> Result<Option<String>, String> {
 
     std::fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
 
-    let command_result = std::process::Command::new("/usr/bin/qlmanage")
+    let mut child = match std::process::Command::new("/usr/bin/qlmanage")
       .args([
         "-t",
         "-s",
@@ -1412,10 +1412,40 @@ fn create_app_preview(path: &Path) -> Result<Option<String>, String> {
         output_dir.to_string_lossy().as_ref(),
         path.to_string_lossy().as_ref(),
       ])
-      .output();
+      .spawn()
+    {
+      Ok(child) => child,
+      Err(error) => {
+        eprintln!("LookPlox could not start qlmanage for {:?}: {error}", path);
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return Ok(None);
+      }
+    };
 
-    let result = match command_result {
-      Ok(output) if output.status.success() => {
+    // qlmanage can block for a long time on some applications. Never let one
+    // preview hold a worker forever.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let status = loop {
+      match child.try_wait() {
+        Ok(Some(status)) => break Some(status),
+        Ok(None) if Instant::now() >= deadline => {
+          let _ = child.kill();
+          let _ = child.wait();
+          eprintln!("LookPlox qlmanage timed out while previewing {:?}", path);
+          break None;
+        }
+        Ok(None) => std::thread::sleep(Duration::from_millis(40)),
+        Err(error) => {
+          let _ = child.kill();
+          let _ = child.wait();
+          eprintln!("LookPlox could not wait for qlmanage for {:?}: {error}", path);
+          break None;
+        }
+      }
+    };
+
+    let result = match status {
+      Some(status) if status.success() => {
         let preview_path = std::fs::read_dir(&output_dir)
           .map_err(|error| error.to_string())?
           .filter_map(Result::ok)
@@ -1436,18 +1466,14 @@ fn create_app_preview(path: &Path) -> Result<Option<String>, String> {
           None => None,
         }
       }
-      Ok(output) => {
+      Some(status) => {
         eprintln!(
-          "LookPlox qlmanage could not preview {:?}: {}",
-          path,
-          String::from_utf8_lossy(&output.stderr)
+          "LookPlox qlmanage could not preview {:?}: exit status {status}",
+          path
         );
         None
       }
-      Err(error) => {
-        eprintln!("LookPlox could not start qlmanage for {:?}: {error}", path);
-        None
-      }
+      None => None,
     };
 
     let _ = std::fs::remove_dir_all(&output_dir);
@@ -1477,8 +1503,7 @@ fn get_file_preview(path: &Path) -> Result<Option<String>, String> {
   create_app_preview(path)
 }
 
-#[tauri::command]
-fn get_file_previews(
+fn get_file_previews_sync(
   paths: Vec<String>,
   preview_images: bool,
   preview_applications: bool,
@@ -1508,6 +1533,19 @@ fn get_file_previews(
   }
 
   Ok(previews)
+}
+
+#[tauri::command]
+async fn get_file_previews(
+  paths: Vec<String>,
+  preview_images: bool,
+  preview_applications: bool,
+) -> Result<HashMap<String, String>, String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    get_file_previews_sync(paths, preview_images, preview_applications)
+  })
+  .await
+  .map_err(|error| format!("Preview worker failed: {error}"))?
 }
 
 #[tauri::command]
