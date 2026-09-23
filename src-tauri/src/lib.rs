@@ -74,7 +74,7 @@ struct StorageConfig {
 
 const DEFAULT_RESULT_LIMIT: usize = 12;
 const DEFAULT_SHOW_PATHS: bool = true;
-const DEFAULT_THEME: &str = "system";
+const DEFAULT_THEME: &str = "light";
 const DEFAULT_HIDE_ON_BLUR: bool = true;
 
 fn default_settings() -> AppSettings {
