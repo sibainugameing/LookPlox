@@ -46,7 +46,7 @@
   const DEFAULT_SETTINGS: Settings = {
     resultLimit: 12,
     showPaths: true,
-    theme: "system",
+    theme: "light",
     hideOnBlur: true,
   };
 
