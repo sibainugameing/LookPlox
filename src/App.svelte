@@ -158,7 +158,10 @@
       });
   }
 
-  async function refreshResultPreviews(items: SearchResult[] = results) {
+  async function refreshResultPreviews(
+    items: SearchResult[] = results,
+    requestToken = requestId,
+  ) {
     if (items.length === 0) {
       return;
     }
@@ -174,6 +177,10 @@
         previewImages: settings.previewImages,
         previewApplications: settings.previewApplications,
       });
+
+      if (requestToken !== requestId) {
+        return;
+      }
 
       results = items.map((item) => ({
         ...item,
@@ -678,7 +685,7 @@
         results = nextResults;
         selected = Math.min(selected, Math.max(nextResults.length - 1, 0));
         await resizeSearchWindow(nextResults.length);
-        await refreshResultPreviews(nextResults);
+        void refreshResultPreviews(nextResults, currentRequest);
       }
     } catch (error) {
       console.error("LookPlox search failed:", error);
