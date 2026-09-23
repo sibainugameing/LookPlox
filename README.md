@@ -25,9 +25,11 @@ Fast local file search and indexing application.
 2. Build a local filename index from the selected folders.
 3. Keep the index updated with filesystem events.
 4. Search file names from the local index.
-5. Preview supported image files and native macOS application icons in search results.
-5. Open the selected file.
-6. Show the search window with a global shortcut.
+5. Search installed applications with the `@` prefix, independently of tracked file folders.
+6. Show typo suggestions with “もしかして” when a search has a close match.
+7. Preview supported image files and native macOS application icons in search results.
+8. Open the selected file.
+9. Show the search window with a global shortcut.
 
 ## Development
 
@@ -64,3 +66,14 @@ LookPlox starts with a setup screen where you choose the folders that should be 
 Folders are stored in the application's local application-data directory as configuration. The search index is stored there as well.
 
 No file contents are uploaded. The MVP indexes file metadata and names locally.
+
+## Search syntax
+
+- Normal search: `Safari`
+- Application search: `@Safari` (full-width `＠` is also accepted)
+- Commands: `/config`, `/add-folder`, `/help`
+- Search suggestions appear when a close filename or application match is found.
+
+Application search uses OS application locations rather than requiring the user to add `/Applications` to the file index. On macOS, Spotlight is used when available with a filesystem fallback, and the application catalog is cached for 30 seconds to keep typing responsive.
+
+Indexing can be canceled from the first-run setup screen or from Settings.
