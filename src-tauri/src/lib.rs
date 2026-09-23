@@ -1419,7 +1419,20 @@ fn run_macos_command_with_timeout(
 
 #[cfg(target_os = "macos")]
 fn read_plist_icon_name(info_plist: &Path) -> Option<String> {
-  for key in ["CFBundleIconFile", "CFBundleIconName"] {
+  let keys = [
+    "CFBundleIconFile",
+    "CFBundleIconName",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.0",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.1",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.2",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.3",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.4",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.5",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.6",
+    "CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.7",
+  ];
+
+  for key in keys {
     let args = [
       std::ffi::OsStr::new("-extract"),
       std::ffi::OsStr::new(key),
@@ -1429,19 +1442,25 @@ fn read_plist_icon_name(info_plist: &Path) -> Option<String> {
       info_plist.as_os_str(),
     ];
 
-    let output = run_macos_command_with_timeout(
+    let Some(output) = run_macos_command_with_timeout(
       "/usr/bin/plutil",
       &args,
       Duration::from_secs(1),
-    )?;
+    ) else {
+      continue;
+    };
 
     if !output.status.success() {
       continue;
     }
 
-    let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    let Ok(value) = String::from_utf8(output.stdout) else {
+      continue;
+    };
+
+    let value = value.trim();
     if !value.is_empty() {
-      return Some(value);
+      return Some(value.to_owned());
     }
   }
 
