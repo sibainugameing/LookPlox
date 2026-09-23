@@ -9,6 +9,7 @@
     name: string;
     path: string;
     is_dir: boolean;
+    preview?: string | null;
   };
 
   type SetupState = {
@@ -29,6 +30,8 @@
     showPaths: boolean;
     theme: Theme;
     hideOnBlur: boolean;
+    previewImages: boolean;
+    previewApplications: boolean;
   };
 
   type StorageLocations = {
@@ -48,6 +51,8 @@
     showPaths: true,
     theme: "light",
     hideOnBlur: true,
+    previewImages: true,
+    previewApplications: true,
   };
 
   const COMMANDS: CommandItem[] = [
@@ -100,6 +105,14 @@
         typeof parsed.hideOnBlur === "boolean"
           ? parsed.hideOnBlur
           : DEFAULT_SETTINGS.hideOnBlur,
+      previewImages:
+        typeof parsed.previewImages === "boolean"
+          ? parsed.previewImages
+          : DEFAULT_SETTINGS.previewImages,
+      previewApplications:
+        typeof parsed.previewApplications === "boolean"
+          ? parsed.previewApplications
+          : DEFAULT_SETTINGS.previewApplications,
     };
   }
 
@@ -145,9 +158,40 @@
       });
   }
 
+  async function refreshResultPreviews(items: SearchResult[] = results) {
+    if (items.length === 0) {
+      return;
+    }
+
+    if (!settings.previewImages && !settings.previewApplications) {
+      results = items.map((item) => ({ ...item, preview: null }));
+      return;
+    }
+
+    try {
+      const previews = await invoke<Record<string, string>>("get_file_previews", {
+        paths: items.map((item) => item.path),
+        previewImages: settings.previewImages,
+        previewApplications: settings.previewApplications,
+      });
+
+      results = items.map((item) => ({
+        ...item,
+        preview: previews[item.path] ?? null,
+      }));
+    } catch (error) {
+      console.error("LookPlox previews could not be loaded:", error);
+      results = items.map((item) => ({ ...item, preview: null }));
+    }
+  }
+
   function updateSettings(patch: Partial<Settings>) {
     settings = { ...settings, ...patch };
     saveSettings();
+
+    if ("previewImages" in patch || "previewApplications" in patch) {
+      void refreshResultPreviews();
+    }
   }
 
   async function loadStorageLocations() {
@@ -634,6 +678,7 @@
         results = nextResults;
         selected = Math.min(selected, Math.max(nextResults.length - 1, 0));
         await resizeSearchWindow(nextResults.length);
+        await refreshResultPreviews(nextResults);
       }
     } catch (error) {
       console.error("LookPlox search failed:", error);
@@ -930,6 +975,34 @@
               <option value="dark">Dark</option>
             </select>
           </label>
+
+          <label class="settings-row">
+            <span class="settings-copy">
+              <span class="settings-title">Preview image files</span>
+              <span class="settings-description">Show image thumbnails instead of the generic file icon for supported image files.</span>
+            </span>
+            <input
+              class="settings-switch"
+              type="checkbox"
+              checked={settings.previewImages}
+              onchange={(event) =>
+                updateSettings({ previewImages: (event.currentTarget as HTMLInputElement).checked })}
+            />
+          </label>
+
+          <label class="settings-row">
+            <span class="settings-copy">
+              <span class="settings-title">Preview application icons</span>
+              <span class="settings-description">Show the native application icon for .app bundles on macOS.</span>
+            </span>
+            <input
+              class="settings-switch"
+              type="checkbox"
+              checked={settings.previewApplications}
+              onchange={(event) =>
+                updateSettings({ previewApplications: (event.currentTarget as HTMLInputElement).checked })}
+            />
+          </label>
         </div>
       </div>
 
@@ -1172,7 +1245,9 @@
             onclick={() => openResult(result)}
           >
             <span class:folder-icon={result.is_dir} class:file-icon={!result.is_dir} class="icon" aria-hidden="true">
-              {#if result.is_dir}
+              {#if result.preview}
+                <img class="result-preview" src={result.preview} alt="" />
+              {:else if result.is_dir}
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
                   <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
