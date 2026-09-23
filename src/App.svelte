@@ -31,6 +31,12 @@
     hideOnBlur: boolean;
   };
 
+  type StorageLocations = {
+    settingsDbPath: string;
+    settingsDbDir: string;
+    indexPath: string;
+  };
+
   type CommandItem = {
     command: string;
     description: string;
@@ -70,6 +76,9 @@
   let folderPickerOpen = false;
 
   let settings: Settings = { ...DEFAULT_SETTINGS };
+  let storageLocations: StorageLocations | null = null;
+  let storageChanging = false;
+  let storageError = "";
 
   const windowHandle = getCurrentWindow();
 
@@ -139,6 +148,55 @@
   function updateSettings(patch: Partial<Settings>) {
     settings = { ...settings, ...patch };
     saveSettings();
+  }
+
+  async function loadStorageLocations() {
+    try {
+      storageLocations = await invoke<StorageLocations>("get_storage_locations");
+      storageError = "";
+    } catch (error) {
+      storageError = "Could not load storage locations: " + String(error);
+    }
+  }
+
+  async function chooseStorageLocation(kind: "settings-db" | "index") {
+    if (storageChanging || indexing || !storageLocations) {
+      return;
+    }
+
+    storageError = "";
+    folderPickerOpen = true;
+
+    try {
+      const selectedPath = await open({
+        directory: true,
+        multiple: false,
+        recursive: true,
+        title:
+          kind === "settings-db"
+            ? "Choose the LookPlox settings database folder"
+            : "Choose the LookPlox search index folder",
+      });
+
+      if (typeof selectedPath !== "string") {
+        return;
+      }
+
+      storageChanging = true;
+      indexMessage = "Moving LookPlox data and restarting…";
+
+      await invoke("change_storage_locations", {
+        settingsDbDir:
+          kind === "settings-db" ? selectedPath : storageLocations.settingsDbDir,
+        indexDir: kind === "index" ? selectedPath : storageLocations.indexPath,
+      });
+    } catch (error) {
+      storageChanging = false;
+      indexMessage = "";
+      storageError = String(error);
+    } finally {
+      folderPickerOpen = false;
+    }
   }
 
   function applyTheme() {
@@ -446,6 +504,8 @@
     commandMatches = [];
     selected = 0;
     setupError = "";
+    storageError = "";
+    await loadStorageLocations();
     await resizeConfigWindow();
     await windowHandle.center();
     await windowHandle.setFocus();
@@ -659,6 +719,7 @@
 
     const initialize = async () => {
       await loadSettings();
+      await loadStorageLocations();
 
       try {
         const state = await invoke<SetupState>("get_setup_state");
@@ -896,6 +957,61 @@
 
       <div class="settings-section">
         <div class="settings-section-heading">
+          <span>Storage</span>
+        </div>
+
+        {#if storageLocations}
+          <div class="settings-storage-list">
+            <div class="settings-storage-row">
+              <div class="settings-copy">
+                <span class="settings-title">Settings database</span>
+                <span class="settings-description">Folder containing LookPlox's settings.sqlite3.</span>
+                <span class="settings-path">{storageLocations.settingsDbDir}</span>
+                <span class="settings-file-path">{storageLocations.settingsDbPath}</span>
+              </div>
+              <button
+                class="secondary-action"
+                type="button"
+                onclick={() => chooseStorageLocation("settings-db")}
+                disabled={storageChanging || indexing}
+              >
+                Change
+              </button>
+            </div>
+
+            <div class="settings-storage-row">
+              <div class="settings-copy">
+                <span class="settings-title">Search index</span>
+                <span class="settings-description">Folder containing the local Tantivy search index.</span>
+                <span class="settings-path">{storageLocations.indexPath}</span>
+              </div>
+              <button
+                class="secondary-action"
+                type="button"
+                onclick={() => chooseStorageLocation("index")}
+                disabled={storageChanging || indexing}
+              >
+                Change
+              </button>
+            </div>
+          </div>
+
+          <div class:error={Boolean(storageError)} class="settings-storage-note">
+            {#if storageError}
+              {storageError}
+            {:else}
+              Changing either location moves the existing data and restarts LookPlox.
+            {/if}
+          </div>
+        {:else}
+          <div class:error={Boolean(storageError)} class="settings-storage-note">
+            {storageError || "Loading storage locations…"}
+          </div>
+        {/if}
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-heading">
           <span>Index</span>
         </div>
 
@@ -964,7 +1080,7 @@
           {:else if indexMessage}
             {indexMessage}
           {:else}
-            <span>Settings are saved automatically.</span>
+            <span>{storageChanging ? "Restarting LookPlox…" : "Settings are saved automatically."}</span>
           {/if}
         </div>
         {#if indexing}
