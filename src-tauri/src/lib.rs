@@ -405,7 +405,7 @@ fn edit_distance(left: &str, right: &str) -> usize {
     let mut current = vec![row + 1; right_chars.len() + 1];
 
     for (column, right_char) in right_chars.iter().enumerate() {
-      let substitution = previous[column] + usize::from(left_char != *right_char);
+      let substitution = previous[column] + if left_char == *right_char { 0 } else { 1 };
       let insertion = current[column] + 1;
       let deletion = previous[column + 1] + 1;
 
