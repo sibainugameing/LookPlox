@@ -682,6 +682,10 @@
     return value.trim().replace(/^＠/, "@");
   }
 
+  function isCommandQuery(value: string) {
+    return normalizedCommandQuery(value).startsWith("/");
+  }
+
   function isApplicationQuery(value: string) {
     return normalizedApplicationQuery(value).startsWith(APPLICATION_SEARCH_PREFIX);
   }
