@@ -368,6 +368,189 @@ fn should_walk_entry(path: &Path) -> bool {
 }
 
 
+
+fn application_search_roots() -> Vec<PathBuf> {
+  let mut roots = Vec::new();
+
+  #[cfg(target_os = "macos")]
+  {
+    roots.push(PathBuf::from("/Applications"));
+    roots.push(PathBuf::from("/System/Applications"));
+    roots.push(PathBuf::from("/System/Library/CoreServices"));
+
+    if let Some(home) = std::env::var_os("HOME") {
+      roots.push(PathBuf::from(home).join("Applications"));
+    }
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    for variable in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA", "APPDATA"] {
+      if let Some(value) = std::env::var_os(variable) {
+        let base = PathBuf::from(value);
+        roots.push(base.clone());
+        if variable == "APPDATA" {
+          roots.push(base.join("Microsoft").join("Windows").join("Start Menu").join("Programs"));
+        }
+      }
+    }
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    roots.push(PathBuf::from("/usr/share/applications"));
+    roots.push(PathBuf::from("/usr/local/share/applications"));
+
+    if let Some(home) = std::env::var_os("HOME") {
+      roots.push(
+        PathBuf::from(home)
+          .join(".local")
+          .join("share")
+          .join("applications"),
+      );
+    }
+  }
+
+  roots
+}
+
+fn scan_application_paths(query: &str, limit: usize) -> Vec<SearchResult> {
+  let normalized = query.trim().to_lowercase();
+  if normalized.is_empty() {
+    return Vec::new();
+  }
+
+  let mut results = Vec::new();
+  let mut seen = HashSet::<PathBuf>::new();
+
+  for root in application_search_roots() {
+    if !root.is_dir() {
+      continue;
+    }
+
+    let max_depth = if cfg!(target_os = "linux") { 2 } else { 4 };
+
+    for entry in WalkDir::new(&root)
+      .follow_links(false)
+      .max_depth(max_depth)
+      .into_iter()
+      .filter_entry(|entry| should_walk_entry(entry.path()))
+      .filter_map(Result::ok)
+    {
+      if !entry.file_type().is_file() && !entry.file_type().is_dir() {
+        continue;
+      }
+
+      let path = entry.path();
+
+      if !is_application_path(path) {
+        continue;
+      }
+
+      if !seen.insert(path.to_path_buf()) {
+        continue;
+      }
+
+      let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        continue;
+      };
+
+      let display_name = application_extension_trimmed(name);
+      let comparable = display_name.to_lowercase();
+
+      if !comparable.contains(&normalized) && !name.to_lowercase().contains(&normalized) {
+        continue;
+      }
+
+      results.push(SearchResult {
+        name: name.to_owned(),
+        path: path.to_string_lossy().into_owned(),
+        is_dir: false,
+        preview: None,
+      });
+    }
+  }
+
+  results.sort_by(|left, right| {
+    let left_name = application_extension_trimmed(&left.name).to_lowercase();
+    let right_name = application_extension_trimmed(&right.name).to_lowercase();
+
+    let left_prefix = !normalized.is_empty() && left_name.starts_with(&normalized);
+    let right_prefix = !normalized.is_empty() && right_name.starts_with(&normalized);
+
+    right_prefix
+      .cmp(&left_prefix)
+      .then_with(|| left_name.cmp(&right_name))
+      .then_with(|| left.path.cmp(&right.path))
+  });
+
+  results.truncate(limit);
+  results
+}
+
+fn suggest_application_path(query: &str) -> Option<String> {
+  let normalized = query.trim().to_lowercase();
+  if normalized.chars().count() < 2 {
+    return None;
+  }
+
+  let mut candidates = Vec::<String>::new();
+  let mut seen = HashSet::<PathBuf>::new();
+
+  for root in application_search_roots() {
+    if !root.is_dir() {
+      continue;
+    }
+
+    let max_depth = if cfg!(target_os = "linux") { 2 } else { 4 };
+
+    for entry in WalkDir::new(&root)
+      .follow_links(false)
+      .max_depth(max_depth)
+      .into_iter()
+      .filter_entry(|entry| should_walk_entry(entry.path()))
+      .filter_map(Result::ok)
+    {
+      if !entry.file_type().is_file() && !entry.file_type().is_dir() {
+        continue;
+      }
+
+      let path = entry.path();
+
+      if !is_application_path(path) || !seen.insert(path.to_path_buf()) {
+        continue;
+      }
+
+      let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        continue;
+      };
+
+      let comparable = application_extension_trimmed(name).to_lowercase();
+      let distance = edit_distance(&normalized, &comparable);
+      let max_distance = match normalized.chars().count() {
+        0..=4 => 1,
+        5..=7 => 2,
+        _ => (normalized.chars().count() / 3).max(2),
+      };
+
+      if distance <= max_distance {
+        candidates.push(name.to_owned());
+      }
+    }
+  }
+
+  candidates.sort_by(|left, right| {
+    let left_name = application_extension_trimmed(left).to_lowercase();
+    let right_name = application_extension_trimmed(right).to_lowercase();
+
+    edit_distance(&normalized, &left_name)
+      .cmp(&edit_distance(&normalized, &right_name))
+      .then_with(|| left_name.cmp(&right_name))
+  });
+
+  candidates.into_iter().next()
+}
+
 pub struct SearchEngine {
   index: Index,
   reader: IndexReader,
@@ -607,6 +790,21 @@ impl SearchEngine {
       return Ok(SearchResponse {
         results: Vec::new(),
         suggestion: None,
+      });
+    }
+
+    if applications_only {
+      let requested_limit = limit.clamp(1, 50);
+      let results = scan_application_paths(&normalized, requested_limit);
+      let suggestion = if results.is_empty() {
+        suggest_application_path(&normalized)?
+      } else {
+        None
+      };
+
+      return Ok(SearchResponse {
+        results,
+        suggestion,
       });
     }
 
