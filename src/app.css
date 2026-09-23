@@ -885,3 +885,17 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 :root:not([data-theme="light"]) .settings-storage-note.error {
   color: #ffaaa8;
 }
+
+
+.result-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 7px;
+}
+
+:root[data-theme="dark"] .result-preview,
+:root:not([data-theme="light"]) .result-preview {
+  background: rgba(255, 255, 255, 0.04);
+}
