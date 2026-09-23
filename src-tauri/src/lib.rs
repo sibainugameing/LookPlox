@@ -1,7 +1,8 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher};
 use serde::{Deserialize, Serialize};
 use rusqlite::{params, Connection};
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{
   atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -1685,25 +1686,86 @@ fn get_file_preview(path: &Path) -> Result<Option<String>, String> {
   create_app_preview(path)
 }
 
+fn app_preview_cache_path(cache_dir: &Path, path: &Path) -> PathBuf {
+  let mut hasher = DefaultHasher::new();
+  path.to_string_lossy().hash(&mut hasher);
+  cache_dir.join(format!("{:016x}.txt", hasher.finish()))
+}
+
+fn app_preview_cache_stamp(path: &Path) -> u128 {
+  std::fs::metadata(path)
+    .ok()
+    .and_then(|metadata| metadata.modified().ok())
+    .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+    .map(|duration| duration.as_nanos())
+    .unwrap_or(0)
+}
+
+fn get_cached_app_preview(path: &Path, cache_dir: &Path) -> Result<Option<String>, String> {
+  let cache_path = app_preview_cache_path(cache_dir, path);
+  let stamp = app_preview_cache_stamp(path);
+
+  if let Ok(cached) = std::fs::read_to_string(&cache_path) {
+    if let Some((cached_stamp, preview)) = cached.split_once('\n') {
+      if cached_stamp.parse::<u128>().ok() == Some(stamp)
+        && preview.starts_with("data:image/png;base64,")
+      {
+        return Ok(Some(preview.to_owned()));
+      }
+    }
+  }
+
+  let Some(preview) = create_app_preview(path)? else {
+    return Ok(None);
+  };
+
+  // The cache is disposable. A plain write is intentional here: if the app
+  // exits during the write, the invalid entry is simply regenerated next time.
+  let cache_contents = format!("{stamp}\n{preview}");
+  std::fs::write(&cache_path, cache_contents).map_err(|error| error.to_string())?;
+
+  Ok(Some(preview))
+}
+
 fn get_file_previews_sync(
   paths: Vec<String>,
   preview_images: bool,
   preview_applications: bool,
+  app_data_dir: PathBuf,
 ) -> Result<HashMap<String, String>, String> {
   let mut previews = HashMap::new();
+
+  let app_cache_dir = if preview_applications {
+    let cache_dir = app_data_dir.join("preview-cache");
+    std::fs::create_dir_all(&cache_dir).map_err(|error| error.to_string())?;
+    Some(cache_dir)
+  } else {
+    None
+  };
 
   for path_string in paths {
     let path = PathBuf::from(&path_string);
 
     let should_preview_image = preview_images && image_mime_type(&path).is_some();
     let should_preview_app = preview_applications
-      && path.extension().and_then(|value| value.to_str()) == Some("app");
+      && path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("app"));
 
     if !should_preview_image && !should_preview_app {
       continue;
     }
 
-    match get_file_preview(&path) {
+    let result = if should_preview_image {
+      get_file_preview(&path)
+    } else if let Some(cache_dir) = app_cache_dir.as_deref() {
+      get_cached_app_preview(&path, cache_dir)
+    } else {
+      get_file_preview(&path)
+    };
+
+    match result {
       Ok(Some(preview)) => {
         previews.insert(path_string, preview);
       }
@@ -1719,12 +1781,23 @@ fn get_file_previews_sync(
 
 #[tauri::command]
 async fn get_file_previews(
+  app: AppHandle,
   paths: Vec<String>,
   preview_images: bool,
   preview_applications: bool,
 ) -> Result<HashMap<String, String>, String> {
+  let app_data_dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|error| error.to_string())?;
+
   tauri::async_runtime::spawn_blocking(move || {
-    get_file_previews_sync(paths, preview_images, preview_applications)
+    get_file_previews_sync(
+      paths,
+      preview_images,
+      preview_applications,
+      app_data_dir,
+    )
   })
   .await
   .map_err(|error| format!("Preview worker failed: {error}"))?
