@@ -797,7 +797,7 @@ impl SearchEngine {
       let requested_limit = limit.clamp(1, 50);
       let results = scan_application_paths(&normalized, requested_limit);
       let suggestion = if results.is_empty() {
-        suggest_application_path(&normalized)?
+        suggest_application_path(&normalized)
       } else {
         None
       };
