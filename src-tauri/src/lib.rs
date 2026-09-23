@@ -303,6 +303,60 @@ pub struct IndexingStatus {
 
 const INDEX_VERSION: &str = "5";
 
+fn is_application_path(path: &Path) -> bool {
+  #[cfg(target_os = "macos")]
+  {
+    return path
+      .extension()
+      .and_then(|extension| extension.to_str())
+      .is_some_and(|extension| extension.eq_ignore_ascii_case("app"));
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    return path
+      .extension()
+      .and_then(|extension| extension.to_str())
+      .is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("exe") || extension.eq_ignore_ascii_case("lnk")
+      });
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    return path
+      .extension()
+      .and_then(|extension| extension.to_str())
+      .is_some_and(|extension| extension.eq_ignore_ascii_case("desktop"));
+  }
+
+  #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+  {
+    let _ = path;
+    false
+  }
+}
+
+fn application_path_pattern() -> Option<&'static str> {
+  #[cfg(target_os = "macos")]
+  {
+    return Some(r"(?i)\.app$");
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    return Some(r"(?i)\.(exe|lnk)$");
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    return Some(r"(?i)\.desktop$");
+  }
+
+  #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+  None
+}
+
 fn is_app_bundle(path: &Path) -> bool {
   #[cfg(target_os = "macos")]
   {
@@ -525,7 +579,12 @@ impl SearchEngine {
     Ok(())
   }
 
-  pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, String> {
+  pub fn search(
+    &self,
+    query: &str,
+    limit: usize,
+    applications_only: bool,
+  ) -> Result<Vec<SearchResult>, String> {
     let normalized = query.trim().to_lowercase();
     if normalized.is_empty() {
       return Ok(Vec::new());
@@ -566,6 +625,20 @@ impl SearchEngine {
       Box::new(BooleanQuery::intersection(clauses))
     };
 
+    let parsed: Box<dyn Query> = if applications_only {
+      if let Some(pattern) = application_path_pattern() {
+        let application_filter: Box<dyn Query> = Box::new(
+          RegexQuery::from_pattern(pattern, self.path_field)
+            .map_err(|error| error.to_string())?,
+        );
+        Box::new(BooleanQuery::intersection(vec![parsed, application_filter]))
+      } else {
+        parsed
+      }
+    } else {
+      parsed
+    };
+
     let searcher = self.reader.searcher();
     let requested_limit = limit.clamp(1, 50);
     let candidate_limit = (requested_limit * 50).clamp(100, 1000);
@@ -597,6 +670,10 @@ impl SearchEngine {
         .get_first(self.is_dir_field)
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
+
+      if applications_only && !is_application_path(Path::new(&path)) {
+        continue;
+      }
 
       if !name.is_empty()
         && !path.is_empty()
@@ -1808,8 +1885,13 @@ fn search_files(
   state: State<'_, AppState>,
   query: String,
   limit: Option<usize>,
+  applications_only: Option<bool>,
 ) -> Result<Vec<SearchResult>, String> {
-  state.engine.search(&query, limit.unwrap_or(12))
+  state.engine.search(
+    &query,
+    limit.unwrap_or(12),
+    applications_only.unwrap_or(false),
+  )
 }
 
 #[tauri::command]
