@@ -25,6 +25,7 @@ Fast local file search and indexing application.
 2. Build a local filename index from the selected folders.
 3. Keep the index updated with filesystem events.
 4. Search file names from the local index.
+5. Preview supported image files and native macOS application icons in search results.
 5. Open the selected file.
 6. Show the search window with a global shortcut.
 
