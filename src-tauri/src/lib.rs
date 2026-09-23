@@ -2486,3 +2486,30 @@ pub fn run() {
     .run(tauri::generate_context!())
     .expect("error while running LookPlox");
 }
+
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn edit_distance_handles_exact_and_single_edit() {
+    assert_eq!(edit_distance("safari", "safari"), 0);
+    assert_eq!(edit_distance("safri", "safari"), 1);
+    assert_eq!(edit_distance("finder", "findr"), 1);
+  }
+
+  #[test]
+  fn application_extension_is_removed_for_display_matching() {
+    assert_eq!(application_extension_trimmed("Safari.app"), "Safari");
+    assert_eq!(application_extension_trimmed("Tool.EXE"), "Tool");
+    assert_eq!(application_extension_trimmed("sample.txt"), "sample.txt");
+  }
+
+  #[test]
+  fn application_names_match_without_bundle_suffix() {
+    let name = application_extension_trimmed("Safari.app").to_lowercase();
+    assert!(name.contains("safari"));
+    assert!(!name.contains(".app"));
+  }
+}
