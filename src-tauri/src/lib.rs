@@ -1,13 +1,14 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Result as NotifyResult, Watcher};
 use serde::{Deserialize, Serialize};
 use rusqlite::{params, Connection};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{
   atomic::{AtomicBool, AtomicUsize, Ordering},
   Arc, Mutex,
 };
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use tantivy::collector::TopDocs;
 use tantivy::doc;
 use tantivy::query::{BooleanQuery, Query, RegexQuery, TermQuery};
@@ -47,6 +48,7 @@ pub struct SearchResult {
   pub name: String,
   pub path: String,
   pub is_dir: bool,
+  pub preview: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,8 @@ pub struct AppSettings {
   pub show_paths: bool,
   pub theme: String,
   pub hide_on_blur: bool,
+  pub preview_images: bool,
+  pub preview_applications: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +80,8 @@ const DEFAULT_RESULT_LIMIT: usize = 12;
 const DEFAULT_SHOW_PATHS: bool = true;
 const DEFAULT_THEME: &str = "light";
 const DEFAULT_HIDE_ON_BLUR: bool = true;
+const DEFAULT_PREVIEW_IMAGES: bool = true;
+const DEFAULT_PREVIEW_APPLICATIONS: bool = true;
 
 fn default_settings() -> AppSettings {
   AppSettings {
@@ -83,6 +89,8 @@ fn default_settings() -> AppSettings {
     show_paths: DEFAULT_SHOW_PATHS,
     theme: DEFAULT_THEME.to_string(),
     hide_on_blur: DEFAULT_HIDE_ON_BLUR,
+    preview_images: DEFAULT_PREVIEW_IMAGES,
+    preview_applications: DEFAULT_PREVIEW_APPLICATIONS,
   }
 }
 
@@ -180,12 +188,46 @@ fn open_settings_db_at(path: &Path) -> Result<Connection, String> {
          result_limit INTEGER NOT NULL,
          show_paths INTEGER NOT NULL,
          theme TEXT NOT NULL,
-         hide_on_blur INTEGER NOT NULL
+         hide_on_blur INTEGER NOT NULL,
+         preview_images INTEGER NOT NULL DEFAULT 1,
+         preview_applications INTEGER NOT NULL DEFAULT 1
        );
-       INSERT OR IGNORE INTO settings (id, result_limit, show_paths, theme, hide_on_blur)
-       VALUES (1, 12, 1, 'system', 1);",
+       INSERT OR IGNORE INTO settings
+         (id, result_limit, show_paths, theme, hide_on_blur, preview_images, preview_applications)
+       VALUES (1, 12, 1, 'light', 1, 1, 1);",
     )
     .map_err(|error| error.to_string())?;
+
+  // Migrate settings databases created by older LookPlox versions.
+  let existing_columns = {
+    let mut statement = connection
+      .prepare("PRAGMA table_info(settings)")
+      .map_err(|error| error.to_string())?;
+    let rows = statement
+      .query_map([], |row| row.get::<_, String>(1))
+      .map_err(|error| error.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+      .map_err(|error| error.to_string())?
+  };
+
+  if !existing_columns.iter().any(|column| column == "preview_images") {
+    connection
+      .execute(
+        "ALTER TABLE settings ADD COLUMN preview_images INTEGER NOT NULL DEFAULT 1",
+        [],
+      )
+      .map_err(|error| error.to_string())?;
+  }
+
+  if !existing_columns.iter().any(|column| column == "preview_applications") {
+    connection
+      .execute(
+        "ALTER TABLE settings ADD COLUMN preview_applications INTEGER NOT NULL DEFAULT 1",
+        [],
+      )
+      .map_err(|error| error.to_string())?;
+  }
 
   Ok(connection)
 }
@@ -197,7 +239,7 @@ fn open_settings_db(app: &AppHandle) -> Result<Connection, String> {
 fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
   let settings = connection
     .query_row(
-      "SELECT result_limit, show_paths, theme, hide_on_blur FROM settings WHERE id = 1",
+      "SELECT result_limit, show_paths, theme, hide_on_blur, preview_images, preview_applications FROM settings WHERE id = 1",
       [],
       |row| {
         Ok(AppSettings {
@@ -205,6 +247,8 @@ fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
           show_paths: row.get::<_, i64>(1)? != 0,
           theme: row.get(2)?,
           hide_on_blur: row.get::<_, i64>(3)? != 0,
+          preview_images: row.get::<_, i64>(4)? != 0,
+          preview_applications: row.get::<_, i64>(5)? != 0,
         })
       },
     )
@@ -219,18 +263,23 @@ fn write_settings(connection: &Connection, settings: &AppSettings) -> Result<(),
 
   connection
     .execute(
-      "INSERT INTO settings (id, result_limit, show_paths, theme, hide_on_blur)
-       VALUES (1, ?1, ?2, ?3, ?4)
+      "INSERT INTO settings
+         (id, result_limit, show_paths, theme, hide_on_blur, preview_images, preview_applications)
+       VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
        ON CONFLICT(id) DO UPDATE SET
          result_limit = excluded.result_limit,
          show_paths = excluded.show_paths,
          theme = excluded.theme,
-         hide_on_blur = excluded.hide_on_blur",
+         hide_on_blur = excluded.hide_on_blur,
+         preview_images = excluded.preview_images,
+         preview_applications = excluded.preview_applications",
       params![
         settings.result_limit as i64,
         if settings.show_paths { 1i64 } else { 0i64 },
         settings.theme.as_str(),
         if settings.hide_on_blur { 1i64 } else { 0i64 },
+        if settings.preview_images { 1i64 } else { 0i64 },
+        if settings.preview_applications { 1i64 } else { 0i64 },
       ],
     )
     .map_err(|error| error.to_string())?;
@@ -552,7 +601,12 @@ impl SearchEngine {
         && !path.is_empty()
         && name.to_lowercase().contains(&normalized)
       {
-        results.push(SearchResult { name, path, is_dir });
+        results.push(SearchResult {
+          name,
+          path,
+          is_dir,
+          preview: None,
+        });
 
         if results.len() >= requested_limit {
           break;
@@ -1311,6 +1365,151 @@ fn cancel_indexing(state: State<'_, AppState>) -> Result<(), String> {
   Ok(())
 }
 
+
+fn image_mime_type(path: &Path) -> Option<&'static str> {
+  match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+    "png" => Some("image/png"),
+    "jpg" | "jpeg" => Some("image/jpeg"),
+    "gif" => Some("image/gif"),
+    "webp" => Some("image/webp"),
+    "bmp" => Some("image/bmp"),
+    "svg" => Some("image/svg+xml"),
+    "avif" => Some("image/avif"),
+    "ico" => Some("image/x-icon"),
+    _ => None,
+  }
+}
+
+fn bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
+  format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes))
+}
+
+fn create_app_preview(path: &Path) -> Result<Option<String>, String> {
+  #[cfg(target_os = "macos")]
+  {
+    if !path.is_dir() || path.extension().and_then(|value| value.to_str()) != Some("app") {
+      return Ok(None);
+    }
+
+    let timestamp = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map_err(|error| error.to_string())?
+      .as_nanos();
+
+    let output_dir = std::env::temp_dir().join(format!(
+      "lookplox-preview-{}-{timestamp}",
+      std::process::id()
+    ));
+
+    std::fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
+
+    let command_result = std::process::Command::new("/usr/bin/qlmanage")
+      .args([
+        "-t",
+        "-s",
+        "96",
+        "-o",
+        output_dir.to_string_lossy().as_ref(),
+        path.to_string_lossy().as_ref(),
+      ])
+      .output();
+
+    let result = match command_result {
+      Ok(output) if output.status.success() => {
+        let preview_path = std::fs::read_dir(&output_dir)
+          .map_err(|error| error.to_string())?
+          .filter_map(Result::ok)
+          .map(|entry| entry.path())
+          .find(|candidate| {
+            candidate
+              .extension()
+              .and_then(|value| value.to_str())
+              .map(|extension| extension.eq_ignore_ascii_case("png"))
+              .unwrap_or(false)
+          });
+
+        match preview_path {
+          Some(preview_path) => {
+            let bytes = std::fs::read(preview_path).map_err(|error| error.to_string())?;
+            Some(bytes_to_data_url(&bytes, "image/png"))
+          }
+          None => None,
+        }
+      }
+      Ok(output) => {
+        eprintln!(
+          "LookPlox qlmanage could not preview {:?}: {}",
+          path,
+          String::from_utf8_lossy(&output.stderr)
+        );
+        None
+      }
+      Err(error) => {
+        eprintln!("LookPlox could not start qlmanage for {:?}: {error}", path);
+        None
+      }
+    };
+
+    let _ = std::fs::remove_dir_all(&output_dir);
+    return Ok(result);
+  }
+
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = path;
+    Ok(None)
+  }
+}
+
+fn get_file_preview(path: &Path) -> Result<Option<String>, String> {
+  if let Some(mime) = image_mime_type(path) {
+    const MAX_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
+
+    let metadata = std::fs::metadata(path).map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_PREVIEW_BYTES {
+      return Ok(None);
+    }
+
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    return Ok(Some(bytes_to_data_url(&bytes, mime)));
+  }
+
+  create_app_preview(path)
+}
+
+#[tauri::command]
+fn get_file_previews(
+  paths: Vec<String>,
+  preview_images: bool,
+  preview_applications: bool,
+) -> Result<HashMap<String, String>, String> {
+  let mut previews = HashMap::new();
+
+  for path_string in paths {
+    let path = PathBuf::from(&path_string);
+
+    let should_preview_image = preview_images && image_mime_type(&path).is_some();
+    let should_preview_app = preview_applications
+      && path.extension().and_then(|value| value.to_str()) == Some("app");
+
+    if !should_preview_image && !should_preview_app {
+      continue;
+    }
+
+    match get_file_preview(&path) {
+      Ok(Some(preview)) => {
+        previews.insert(path_string, preview);
+      }
+      Ok(None) => {}
+      Err(error) => {
+        eprintln!("LookPlox could not create a preview for {:?}: {error}", path);
+      }
+    }
+  }
+
+  Ok(previews)
+}
+
 #[tauri::command]
 fn search_files(
   state: State<'_, AppState>,
@@ -1488,6 +1687,7 @@ pub fn run() {
       add_index_root,
       remove_index_root,
       search_files,
+      get_file_previews,
       open_path
     ])
     .run(tauri::generate_context!())
