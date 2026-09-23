@@ -947,6 +947,16 @@ fn change_storage_locations(
     read_settings(&connection)?
   };
 
+  // Create the new settings database before touching the search index.
+  // The current database remains intact until the storage configuration is committed.
+  if current_db != new_db {
+    let new_connection = open_settings_db_at(&new_db)?;
+    write_settings(&new_connection, &current_settings)?;
+  }
+
+  let mut index_was_renamed = false;
+  let mut index_was_copied = false;
+
   if current_index != new_index {
     if new_index.exists() {
       if !is_directory_empty(&new_index)? {
@@ -961,24 +971,20 @@ fn change_storage_locations(
 
     if current_index.exists() {
       match std::fs::rename(&current_index, &new_index) {
-        Ok(()) => {}
+        Ok(()) => {
+          index_was_renamed = true;
+        }
         Err(_) => {
-          copy_directory_recursive(&current_index, &new_index)?;
-          if let Err(error) = std::fs::remove_dir_all(&current_index) {
-            eprintln!(
-              "LookPlox could not remove the old search index after copying it: {error}"
-            );
+          if let Err(error) = copy_directory_recursive(&current_index, &new_index) {
+            let _ = std::fs::remove_dir_all(&new_index);
+            return Err(error);
           }
+          index_was_copied = true;
         }
       }
     } else {
       std::fs::create_dir_all(&new_index).map_err(|error| error.to_string())?;
     }
-  }
-
-  if current_db != new_db {
-    let new_connection = open_settings_db_at(&new_db)?;
-    write_settings(&new_connection, &current_settings)?;
   }
 
   let next_config = StorageConfig {
@@ -987,12 +993,21 @@ fn change_storage_locations(
   };
 
   if let Err(error) = save_storage_config(&app, &next_config) {
-    if current_index != new_index && new_index.exists() && !current_index.exists() {
+    if index_was_renamed {
       if let Err(rollback_error) = std::fs::rename(&new_index, &current_index) {
         eprintln!("LookPlox could not roll back the index move: {rollback_error}");
       }
+    } else if index_was_copied {
+      let _ = std::fs::remove_dir_all(&new_index);
     }
+
     return Err(error);
+  }
+
+  if index_was_copied && current_index.exists() {
+    if let Err(error) = std::fs::remove_dir_all(&current_index) {
+      eprintln!("LookPlox could not remove the old search index after copying it: {error}");
+    }
   }
 
   if current_db != new_db && current_db.exists() {
@@ -1003,7 +1018,6 @@ fn change_storage_locations(
 
   app.restart();
 }
-
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
   let connection = state
