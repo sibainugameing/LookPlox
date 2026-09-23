@@ -860,6 +860,12 @@
     if (event.key === "Enter" && results[selected]) {
       event.preventDefault();
       await openResult(results[selected]);
+      return;
+    }
+
+    if (event.key === "Enter" && searchSuggestion) {
+      event.preventDefault();
+      await useSearchSuggestion();
     }
   }
 
