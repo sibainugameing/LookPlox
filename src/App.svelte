@@ -55,6 +55,8 @@
     previewApplications: true,
   };
 
+  const APPLICATION_SEARCH_PREFIX = "@";
+
   const COMMANDS: CommandItem[] = [
     { command: "/config", description: "Open LookPlox settings" },
     { command: "/add-folder", description: "Add a folder to the search index" },
@@ -662,8 +664,12 @@
     return value.trim().replace(/^／/, "/");
   }
 
-  function isCommandQuery(value: string) {
-    return normalizedCommandQuery(value).startsWith("/");
+  function normalizedApplicationQuery(value: string) {
+    return value.trim().replace(/^＠/, "@");
+  }
+
+  function isApplicationQuery(value: string) {
+    return normalizedApplicationQuery(value).startsWith(APPLICATION_SEARCH_PREFIX);
   }
 
   async function search() {
@@ -674,6 +680,7 @@
 
     const rawValue = query.trim();
     const value = normalizedCommandQuery(rawValue);
+    const applicationQuery = normalizedApplicationQuery(rawValue);
 
     if (value.startsWith("/")) {
       commandMatches = COMMANDS.filter((item) =>
@@ -687,7 +694,12 @@
 
     commandMatches = [];
 
-    if (!value) {
+    const applicationsOnly = applicationQuery.startsWith(APPLICATION_SEARCH_PREFIX);
+    const searchValue = applicationsOnly
+      ? applicationQuery.slice(APPLICATION_SEARCH_PREFIX.length).trim()
+      : value;
+
+    if (!searchValue) {
       results = [];
       selected = 0;
       await resizeSearchWindow(0);
@@ -698,8 +710,9 @@
 
     try {
       const nextResults = await invoke<SearchResult[]>("search_files", {
-        query: value,
+        query: searchValue,
         limit: settings.resultLimit,
+        applicationsOnly,
       });
 
       if (currentRequest === requestId) {
@@ -1200,11 +1213,15 @@
         <div>
           <div class="setup-kicker">LOOKPLOX</div>
           <h1>Commands</h1>
-          <p>Type a slash command in the search field and press Enter.</p>
+          <p>Type a slash command in the search field and press Enter. Prefix an application search with @.</p>
         </div>
       </header>
 
       <div class="command-help-list">
+        <div class="command-help-row application-help-row">
+          <span class="command-name">@</span>
+          <span class="command-description">Search applications only, for example @Safari</span>
+        </div>
         {#each COMMANDS as item}
           <button class="command-help-row" type="button" onclick={() => executeCommand(item.command)}>
             <span class="command-name">{item.command}</span>
@@ -1222,15 +1239,17 @@
         bind:this={input}
         bind:value={query}
         oninput={() => search()}
-        placeholder="Search files or /commands"
+        placeholder="Search files · @ apps · / commands"
         autocomplete="off"
         spellcheck="false"
-        aria-label="Search files or commands"
+        aria-label="Search files, applications, or commands"
       />
       {#if searching}
         <span class="status">Searching</span>
       {:else if indexMessage}
         <span class="status">{indexMessage}</span>
+      {:else if isApplicationQuery(query)}
+        <span class="status application-status">Applications</span>
       {:else if results.length > 0}
         <span class="status">{results.length}</span>
       {/if}
