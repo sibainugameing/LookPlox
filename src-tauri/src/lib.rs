@@ -369,6 +369,32 @@ fn should_walk_entry(path: &Path) -> bool {
 
 
 
+#[derive(Clone, Debug)]
+struct ApplicationEntry {
+  name: String,
+  path: PathBuf,
+}
+
+struct ApplicationCache {
+  refreshed_at: Option<Instant>,
+  entries: Vec<ApplicationEntry>,
+}
+
+impl ApplicationCache {
+  fn new() -> Self {
+    Self {
+      refreshed_at: None,
+      entries: Vec::new(),
+    }
+  }
+
+  fn is_fresh(&self) -> bool {
+    self
+      .refreshed_at
+      .is_some_and(|value| value.elapsed() < Duration::from_secs(30))
+  }
+}
+
 fn application_search_roots() -> Vec<PathBuf> {
   let mut roots = Vec::new();
 
@@ -385,14 +411,37 @@ fn application_search_roots() -> Vec<PathBuf> {
 
   #[cfg(target_os = "windows")]
   {
-    for variable in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA", "APPDATA"] {
-      if let Some(value) = std::env::var_os(variable) {
-        let base = PathBuf::from(value);
-        roots.push(base.clone());
-        if variable == "APPDATA" {
-          roots.push(base.join("Microsoft").join("Windows").join("Start Menu").join("Programs"));
-        }
-      }
+    if let Some(value) = std::env::var_os("ProgramFiles") {
+      roots.push(PathBuf::from(value));
+    }
+
+    if let Some(value) = std::env::var_os("ProgramFiles(x86)") {
+      roots.push(PathBuf::from(value));
+    }
+
+    if let Some(value) = std::env::var_os("LOCALAPPDATA") {
+      roots.push(PathBuf::from(value));
+    }
+
+    if let Some(value) = std::env::var_os("APPDATA") {
+      let base = PathBuf::from(value);
+      roots.push(base.clone());
+      roots.push(
+        base.join("Microsoft")
+          .join("Windows")
+          .join("Start Menu")
+          .join("Programs"),
+      );
+    }
+
+    if let Some(value) = std::env::var_os("ProgramData") {
+      roots.push(
+        PathBuf::from(value)
+          .join("Microsoft")
+          .join("Windows")
+          .join("Start Menu")
+          .join("Programs"),
+      );
     }
   }
 
@@ -414,87 +463,44 @@ fn application_search_roots() -> Vec<PathBuf> {
   roots
 }
 
-fn scan_application_paths(query: &str, limit: usize) -> Vec<SearchResult> {
-  let normalized = query.trim().to_lowercase();
-  if normalized.is_empty() {
+#[cfg(target_os = "macos")]
+fn discover_macos_applications_with_spotlight() -> Vec<ApplicationEntry> {
+  let args = [
+    std::ffi::OsStr::new("kMDItemContentType == 'com.apple.application-bundle'"),
+  ];
+
+  let Some(output) = run_macos_command_with_timeout(
+    "/usr/bin/mdfind",
+    &args,
+    Duration::from_secs(2),
+  ) else {
+    return Vec::new();
+  };
+
+  if !output.status.success() {
     return Vec::new();
   }
 
-  let mut results = Vec::new();
-  let mut seen = HashSet::<PathBuf>::new();
+  let Ok(stdout) = String::from_utf8(output.stdout) else {
+    return Vec::new();
+  };
 
-  for root in application_search_roots() {
-    if !root.is_dir() {
-      continue;
-    }
-
-    let max_depth = if cfg!(target_os = "linux") { 2 } else { 4 };
-
-    for entry in WalkDir::new(&root)
-      .follow_links(false)
-      .max_depth(max_depth)
-      .into_iter()
-      .filter_entry(|entry| should_walk_entry(entry.path()))
-      .filter_map(Result::ok)
-    {
-      if !entry.file_type().is_file() && !entry.file_type().is_dir() {
-        continue;
+  stdout
+    .lines()
+    .filter_map(|line| {
+      let path = PathBuf::from(line.trim());
+      if !path.is_dir() || !is_application_path(&path) {
+        return None;
       }
 
-      let path = entry.path();
-
-      if !is_application_path(path) {
-        continue;
-      }
-
-      if !seen.insert(path.to_path_buf()) {
-        continue;
-      }
-
-      let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
-        continue;
-      };
-
-      let display_name = application_extension_trimmed(name);
-      let comparable = display_name.to_lowercase();
-
-      if !comparable.contains(&normalized) && !name.to_lowercase().contains(&normalized) {
-        continue;
-      }
-
-      results.push(SearchResult {
-        name: name.to_owned(),
-        path: path.to_string_lossy().into_owned(),
-        is_dir: false,
-        preview: None,
-      });
-    }
-  }
-
-  results.sort_by(|left, right| {
-    let left_name = application_extension_trimmed(&left.name).to_lowercase();
-    let right_name = application_extension_trimmed(&right.name).to_lowercase();
-
-    let left_prefix = !normalized.is_empty() && left_name.starts_with(&normalized);
-    let right_prefix = !normalized.is_empty() && right_name.starts_with(&normalized);
-
-    right_prefix
-      .cmp(&left_prefix)
-      .then_with(|| left_name.cmp(&right_name))
-      .then_with(|| left.path.cmp(&right.path))
-  });
-
-  results.truncate(limit);
-  results
+      let name = path.file_name()?.to_str()?.to_owned();
+      Some(ApplicationEntry { name, path })
+    })
+    .collect()
 }
 
-fn suggest_application_path(query: &str) -> Option<String> {
-  let normalized = query.trim().to_lowercase();
-  if normalized.chars().count() < 2 {
-    return None;
-  }
-
-  let mut candidates = Vec::<String>::new();
+fn discover_applications_from_roots() -> Vec<ApplicationEntry> {
+  let mut entries = Vec::new();
   let mut seen = HashSet::<PathBuf>::new();
 
   for root in application_search_roots() {
@@ -525,31 +531,47 @@ fn suggest_application_path(query: &str) -> Option<String> {
         continue;
       };
 
-      let comparable = application_extension_trimmed(name).to_lowercase();
-      let distance = edit_distance(&normalized, &comparable);
-      let max_distance = match normalized.chars().count() {
-        0..=4 => 1,
-        5..=7 => 2,
-        _ => (normalized.chars().count() / 3).max(2),
-      };
-
-      if distance <= max_distance {
-        candidates.push(name.to_owned());
-      }
+      entries.push(ApplicationEntry {
+        name: name.to_owned(),
+        path: path.to_path_buf(),
+      });
     }
   }
 
-  candidates.sort_by(|left, right| {
-    let left_name = application_extension_trimmed(left).to_lowercase();
-    let right_name = application_extension_trimmed(right).to_lowercase();
-
-    edit_distance(&normalized, &left_name)
-      .cmp(&edit_distance(&normalized, &right_name))
-      .then_with(|| left_name.cmp(&right_name))
-  });
-
-  candidates.into_iter().next()
+  entries
 }
+
+fn discover_applications() -> Vec<ApplicationEntry> {
+  #[cfg(target_os = "macos")]
+  {
+    let mut entries = discover_macos_applications_with_spotlight();
+
+    // Spotlight can be unavailable on some volumes or development machines.
+    // Filesystem discovery is the fallback and also catches apps outside the Spotlight index.
+    if entries.is_empty() {
+      entries = discover_applications_from_roots();
+    } else {
+      let mut seen = entries
+        .iter()
+        .map(|entry| entry.path.clone())
+        .collect::<HashSet<_>>();
+
+      for entry in discover_applications_from_roots() {
+        if seen.insert(entry.path.clone()) {
+          entries.push(entry);
+        }
+      }
+    }
+
+    return entries;
+  }
+
+  #[cfg(not(target_os = "macos"))]
+  {
+    discover_applications_from_roots()
+  }
+}
+
 
 pub struct SearchEngine {
   index: Index,
@@ -558,6 +580,7 @@ pub struct SearchEngine {
   name_field: Field,
   path_field: Field,
   is_dir_field: Field,
+  application_cache: Mutex<ApplicationCache>,
 }
 
 fn edit_distance(left: &str, right: &str) -> usize {
@@ -646,6 +669,7 @@ impl SearchEngine {
       name_field,
       path_field,
       is_dir_field,
+      application_cache: Mutex::new(ApplicationCache::new()),
     })
   }
 
@@ -779,6 +803,20 @@ impl SearchEngine {
     Ok(())
   }
 
+  fn application_entries(&self) -> Vec<ApplicationEntry> {
+    let mut cache = match self.application_cache.lock() {
+      Ok(value) => value,
+      Err(_) => return discover_applications(),
+    };
+
+    if !cache.is_fresh() {
+      cache.entries = discover_applications();
+      cache.refreshed_at = Some(Instant::now());
+    }
+
+    cache.entries.clone()
+  }
+
   pub fn search(
     &self,
     query: &str,
@@ -795,15 +833,76 @@ impl SearchEngine {
 
     if applications_only {
       let requested_limit = limit.clamp(1, 50);
-      let results = scan_application_paths(&normalized, requested_limit);
-      let suggestion = if results.is_empty() {
-        suggest_application_path(&normalized)
+      let entries = self.application_entries();
+
+      let mut matched = entries
+        .iter()
+        .filter(|entry| {
+          let comparable = application_extension_trimmed(&entry.name).to_lowercase();
+          comparable.contains(&normalized) || entry.name.to_lowercase().contains(&normalized)
+        })
+        .map(|entry| SearchResult {
+          name: entry.name.clone(),
+          path: entry.path.to_string_lossy().into_owned(),
+          is_dir: false,
+          preview: None,
+        })
+        .collect::<Vec<_>>();
+
+      matched.sort_by(|left, right| {
+        let left_name = application_extension_trimmed(&left.name).to_lowercase();
+        let right_name = application_extension_trimmed(&right.name).to_lowercase();
+
+        let left_prefix = left_name.starts_with(&normalized);
+        let right_prefix = right_name.starts_with(&normalized);
+
+        right_prefix
+          .cmp(&left_prefix)
+          .then_with(|| left_name.cmp(&right_name))
+          .then_with(|| left.path.cmp(&right.path))
+      });
+
+      matched.truncate(requested_limit);
+
+      let suggestion = if matched.is_empty() {
+        let mut best: Option<(usize, usize, String)> = None;
+
+        for entry in &entries {
+          let comparable = application_extension_trimmed(&entry.name).to_lowercase();
+          let distance = edit_distance(&normalized, &comparable);
+          let length_gap =
+            comparable.chars().count().abs_diff(normalized.chars().count());
+          let max_distance = match normalized.chars().count() {
+            0..=4 => 1,
+            5..=7 => 2,
+            _ => (normalized.chars().count() / 3).max(2),
+          };
+
+          if distance > max_distance {
+            continue;
+          }
+
+          let candidate = (distance, length_gap, entry.name.clone());
+
+          if best
+            .as_ref()
+            .map(|current| {
+              candidate.0 < current.0
+                || (candidate.0 == current.0 && candidate.1 < current.1)
+            })
+            .unwrap_or(true)
+          {
+            best = Some(candidate);
+          }
+        }
+
+        best.map(|(_, _, name)| name)
       } else {
         None
       };
 
       return Ok(SearchResponse {
-        results,
+        results: matched,
         suggestion,
       });
     }
