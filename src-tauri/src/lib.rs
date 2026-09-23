@@ -58,6 +58,20 @@ pub struct AppSettings {
   pub hide_on_blur: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageLocations {
+  pub settings_db_path: String,
+  pub settings_db_dir: String,
+  pub index_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StorageConfig {
+  settings_db_path: String,
+  index_path: String,
+}
+
 const DEFAULT_RESULT_LIMIT: usize = 12;
 const DEFAULT_SHOW_PATHS: bool = true;
 const DEFAULT_THEME: &str = "system";
@@ -84,15 +98,75 @@ fn validate_settings(settings: &AppSettings) -> Result<(), String> {
   Ok(())
 }
 
-fn settings_db_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn storage_config_path(app: &AppHandle) -> Result<PathBuf, String> {
   app.path()
     .app_data_dir()
-    .map(|dir| dir.join("settings.sqlite3"))
+    .map(|dir| dir.join("storage-config.json"))
     .map_err(|error| error.to_string())
 }
 
-fn open_settings_db(app: &AppHandle) -> Result<Connection, String> {
-  let path = settings_db_path(app)?;
+fn default_storage_config(app: &AppHandle) -> Result<StorageConfig, String> {
+  let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+
+  Ok(StorageConfig {
+    settings_db_path: data_dir.join("settings.sqlite3").to_string_lossy().into_owned(),
+    index_path: data_dir.join("index").to_string_lossy().into_owned(),
+  })
+}
+
+fn read_storage_config(app: &AppHandle) -> Result<StorageConfig, String> {
+  let path = storage_config_path(app)?;
+
+  if !path.exists() {
+    return default_storage_config(app);
+  }
+
+  let raw = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+  let config: StorageConfig = serde_json::from_str(&raw)
+    .map_err(|error| format!("Could not read storage configuration: {error}"))?;
+
+  if config.settings_db_path.trim().is_empty() || config.index_path.trim().is_empty() {
+    return Err("Storage configuration contains an empty path.".into());
+  }
+
+  Ok(config)
+}
+
+fn save_storage_config(app: &AppHandle, config: &StorageConfig) -> Result<(), String> {
+  let path = storage_config_path(app)?;
+  if let Some(parent) = path.parent() {
+    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+  }
+
+  let json = serde_json::to_string_pretty(config)
+    .map_err(|error| format!("Could not serialize storage configuration: {error}"))?;
+  let temp_path = path.with_extension("json.tmp");
+
+  std::fs::write(&temp_path, json).map_err(|error| error.to_string())?;
+  std::fs::rename(&temp_path, &path).map_err(|error| error.to_string())?;
+  Ok(())
+}
+
+fn storage_locations_from_config(config: &StorageConfig) -> Result<StorageLocations, String> {
+  let db_path = PathBuf::from(&config.settings_db_path);
+  let index_path = PathBuf::from(&config.index_path);
+
+  let settings_db_dir = db_path
+    .parent()
+    .ok_or_else(|| "Settings database path has no parent directory.".to_string())?;
+
+  Ok(StorageLocations {
+    settings_db_path: db_path.to_string_lossy().into_owned(),
+    settings_db_dir: settings_db_dir.to_string_lossy().into_owned(),
+    index_path: index_path.to_string_lossy().into_owned(),
+  })
+}
+
+fn settings_db_path(app: &AppHandle) -> Result<PathBuf, String> {
+  Ok(PathBuf::from(read_storage_config(app)?.settings_db_path))
+}
+
+fn open_settings_db_at(path: &Path) -> Result<Connection, String> {
   if let Some(parent) = path.parent() {
     std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
   }
@@ -114,6 +188,10 @@ fn open_settings_db(app: &AppHandle) -> Result<Connection, String> {
     .map_err(|error| error.to_string())?;
 
   Ok(connection)
+}
+
+fn open_settings_db(app: &AppHandle) -> Result<Connection, String> {
+  open_settings_db_at(&settings_db_path(app)?)
 }
 
 fn read_settings(connection: &Connection) -> Result<AppSettings, String> {
@@ -638,6 +716,36 @@ fn incremental_scan(
   Ok(())
 }
 
+fn copy_directory_recursive(source: &Path, destination: &Path) -> Result<(), String> {
+  if !source.is_dir() {
+    return Err(format!("Index source is not a directory: {}", source.display()));
+  }
+
+  std::fs::create_dir_all(destination).map_err(|error| error.to_string())?;
+
+  for entry in std::fs::read_dir(source).map_err(|error| error.to_string())? {
+    let entry = entry.map_err(|error| error.to_string())?;
+    let source_path = entry.path();
+    let destination_path = destination.join(entry.file_name());
+    let file_type = entry.file_type().map_err(|error| error.to_string())?;
+
+    if file_type.is_dir() {
+      copy_directory_recursive(&source_path, &destination_path)?;
+    } else if file_type.is_file() {
+      std::fs::copy(&source_path, &destination_path).map_err(|error| error.to_string())?;
+    } else {
+      return Err(format!("Unsupported item in index directory: {}", source_path.display()));
+    }
+  }
+
+  Ok(())
+}
+
+fn is_directory_empty(path: &Path) -> Result<bool, String> {
+  let mut entries = std::fs::read_dir(path).map_err(|error| error.to_string())?;
+  Ok(entries.next().is_none())
+}
+
 fn path_is_active(path: &Path, roots: &[PathBuf]) -> bool {
   roots.iter().any(|root| path == root || path.starts_with(root))
 }
@@ -782,6 +890,118 @@ fn watch_root_once(
     drop(watched);
     start_watcher(engine, root, active_roots);
   }
+}
+
+#[tauri::command]
+fn get_storage_locations(app: AppHandle) -> Result<StorageLocations, String> {
+  let config = read_storage_config(&app)?;
+  storage_locations_from_config(&config)
+}
+
+#[tauri::command]
+fn change_storage_locations(
+  app: AppHandle,
+  state: State<'_, AppState>,
+  settings_db_dir: String,
+  index_dir: String,
+) -> Result<(), String> {
+  if state.indexing.running.load(Ordering::SeqCst) {
+    return Err("Stop indexing before changing storage locations.".into());
+  }
+
+  let current = read_storage_config(&app)?;
+  let current_db = PathBuf::from(&current.settings_db_path);
+  let current_index = PathBuf::from(&current.index_path);
+  let new_db_dir = PathBuf::from(settings_db_dir);
+  let new_index = PathBuf::from(index_dir);
+
+  if !new_db_dir.is_dir() {
+    return Err("The selected settings database folder is not available.".into());
+  }
+
+  if !new_index.is_dir() && new_index.exists() {
+    return Err("The selected search index location is not a folder.".into());
+  }
+
+  let new_db = new_db_dir.join("settings.sqlite3");
+
+  if current_db == new_db && current_index == new_index {
+    return Ok(());
+  }
+
+  if current_index != new_index
+    && (new_index.starts_with(&current_index) || current_index.starts_with(&new_index))
+  {
+    return Err(
+      "The new search index folder must not contain or be inside the current index folder."
+        .into(),
+    );
+  }
+
+  let current_settings = {
+    let connection = state
+      .settings_db
+      .lock()
+      .map_err(|_| "Settings database is unavailable.".to_string())?;
+
+    read_settings(&connection)?
+  };
+
+  if current_index != new_index {
+    if new_index.exists() {
+      if !is_directory_empty(&new_index)? {
+        return Err(
+          "The selected search index folder must be empty before LookPlox can use it.".into(),
+        );
+      }
+      std::fs::remove_dir(&new_index).map_err(|error| error.to_string())?;
+    } else if let Some(parent) = new_index.parent() {
+      std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    if current_index.exists() {
+      match std::fs::rename(&current_index, &new_index) {
+        Ok(()) => {}
+        Err(_) => {
+          copy_directory_recursive(&current_index, &new_index)?;
+          if let Err(error) = std::fs::remove_dir_all(&current_index) {
+            eprintln!(
+              "LookPlox could not remove the old search index after copying it: {error}"
+            );
+          }
+        }
+      }
+    } else {
+      std::fs::create_dir_all(&new_index).map_err(|error| error.to_string())?;
+    }
+  }
+
+  if current_db != new_db {
+    let new_connection = open_settings_db_at(&new_db)?;
+    write_settings(&new_connection, &current_settings)?;
+  }
+
+  let next_config = StorageConfig {
+    settings_db_path: new_db.to_string_lossy().into_owned(),
+    index_path: new_index.to_string_lossy().into_owned(),
+  };
+
+  if let Err(error) = save_storage_config(&app, &next_config) {
+    if current_index != new_index && new_index.exists() && !current_index.exists() {
+      if let Err(rollback_error) = std::fs::rename(&new_index, &current_index) {
+        eprintln!("LookPlox could not roll back the index move: {rollback_error}");
+      }
+    }
+    return Err(error);
+  }
+
+  if current_db != new_db && current_db.exists() {
+    if let Err(error) = std::fs::remove_file(&current_db) {
+      eprintln!("LookPlox could not remove the old settings database: {error}");
+    }
+  }
+
+  app.restart();
 }
 
 #[tauri::command]
@@ -1169,9 +1389,12 @@ pub fn run() {
         let data_dir = app.path().app_data_dir()?;
         std::fs::create_dir_all(&data_dir)?;
 
+        let storage_config = read_storage_config(app.handle())?;
+        save_storage_config(app.handle(), &storage_config)?;
+
         let settings_db = Arc::new(Mutex::new(open_settings_db(app.handle())?));
 
-        let index_dir = data_dir.join("index");
+        let index_dir = PathBuf::from(&storage_config.index_path);
 
         if !is_index_current(app.handle())? && index_dir.exists() {
           std::fs::remove_dir_all(&index_dir)?;
@@ -1242,6 +1465,8 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       get_settings,
       save_settings,
+      get_storage_locations,
+      change_storage_locations,
       get_setup_state,
       get_indexing_status,
       start_indexing,
