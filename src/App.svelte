@@ -171,24 +171,45 @@
       return;
     }
 
-    try {
-      const previews = await invoke<Record<string, string>>("get_file_previews", {
-        paths: items.map((item) => item.path),
-        previewImages: settings.previewImages,
-        previewApplications: settings.previewApplications,
-      });
+    // Only load previews for the currently visible portion first. Each item
+    // is fetched independently so fast/cache-hit icons can appear immediately
+    // instead of waiting for the slowest preview in the whole result set.
+    const previewItems = items.slice(0, 8);
+    const loadPreview = async (item: SearchResult) => {
+      try {
+        const previews = await invoke<Record<string, string>>("get_file_previews", {
+          paths: [item.path],
+          previewImages: settings.previewImages,
+          previewApplications: settings.previewApplications,
+        });
 
+        if (requestToken !== requestId) {
+          return;
+        }
+
+        const preview = previews[item.path] ?? null;
+        results = results.map((current) =>
+          current.path === item.path ? { ...current, preview } : current,
+        );
+      } catch (error) {
+        console.error("LookPlox preview could not be loaded:", error);
+        if (requestToken !== requestId) {
+          return;
+        }
+
+        results = results.map((current) =>
+          current.path === item.path ? { ...current, preview: null } : current,
+        );
+      }
+    };
+
+    // Keep native preview generation bounded while allowing previews to
+    // appear progressively as individual requests finish.
+    for (let index = 0; index < previewItems.length; index += 4) {
+      await Promise.all(previewItems.slice(index, index + 4).map(loadPreview));
       if (requestToken !== requestId) {
         return;
       }
-
-      results = items.map((item) => ({
-        ...item,
-        preview: previews[item.path] ?? null,
-      }));
-    } catch (error) {
-      console.error("LookPlox previews could not be loaded:", error);
-      results = items.map((item) => ({ ...item, preview: null }));
     }
   }
 
