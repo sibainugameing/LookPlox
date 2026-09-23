@@ -1384,10 +1384,240 @@ fn bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
   format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes))
 }
 
+#[cfg(target_os = "macos")]
+fn run_macos_command_with_timeout(
+  program: &str,
+  args: &[&std::ffi::OsStr],
+  timeout: Duration,
+) -> Option<std::process::Output> {
+  let mut child = std::process::Command::new(program)
+    .args(args)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::null())
+    .spawn()
+    .ok()?;
+
+  let deadline = Instant::now() + timeout;
+
+  loop {
+    match child.try_wait() {
+      Ok(Some(_)) => return child.wait_with_output().ok(),
+      Ok(None) if Instant::now() >= deadline => {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+      }
+      Ok(None) => std::thread::sleep(Duration::from_millis(40)),
+      Err(_) => {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+      }
+    }
+  }
+}
+
+#[cfg(target_os = "macos")]
+fn read_plist_icon_name(info_plist: &Path) -> Option<String> {
+  for key in ["CFBundleIconFile", "CFBundleIconName"] {
+    let args = [
+      std::ffi::OsStr::new("-extract"),
+      std::ffi::OsStr::new(key),
+      std::ffi::OsStr::new("raw"),
+      std::ffi::OsStr::new("-o"),
+      std::ffi::OsStr::new("-"),
+      info_plist.as_os_str(),
+    ];
+
+    let output = run_macos_command_with_timeout(
+      "/usr/bin/plutil",
+      &args,
+      Duration::from_secs(1),
+    )?;
+
+    if !output.status.success() {
+      continue;
+    }
+
+    let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+    if !value.is_empty() {
+      return Some(value);
+    }
+  }
+
+  None
+}
+
+#[cfg(target_os = "macos")]
+fn find_app_icns(path: &Path) -> Option<PathBuf> {
+  let resources = path.join("Contents").join("Resources");
+  if !resources.is_dir() {
+    return None;
+  }
+
+  let info_plist = path.join("Contents").join("Info.plist");
+  let icon_name = read_plist_icon_name(&info_plist);
+
+  let mut candidate_names = Vec::new();
+
+  if let Some(name) = icon_name {
+    let base_name = Path::new(&name)
+      .file_name()
+      .and_then(|value| value.to_str())
+      .unwrap_or(name.as_str());
+
+    candidate_names.push(base_name.to_owned());
+    if Path::new(base_name)
+      .extension()
+      .and_then(|value| value.to_str())
+      .is_none()
+    {
+      candidate_names.push(format!("{base_name}.icns"));
+    }
+  }
+
+  for fallback in ["AppIcon.icns", "ApplicationIcon.icns", "app.icns"] {
+    candidate_names.push(fallback.to_owned());
+  }
+
+  for candidate in &candidate_names {
+    let direct = resources.join(candidate);
+    if direct.is_file()
+      && direct
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("icns"))
+    {
+      return Some(direct);
+    }
+  }
+
+  let mut fallback_icns = None;
+
+  for entry in WalkDir::new(&resources)
+    .follow_links(false)
+    .into_iter()
+    .filter_map(Result::ok)
+  {
+    let candidate = entry.path();
+
+    if !candidate.is_file()
+      || !candidate
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("icns"))
+    {
+      continue;
+    }
+
+    let Some(file_name) = candidate.file_name().and_then(|value| value.to_str()) else {
+      continue;
+    };
+
+    if candidate_names
+      .iter()
+      .any(|name| name.eq_ignore_ascii_case(file_name))
+    {
+      return Some(candidate.to_path_buf());
+    }
+
+    if fallback_icns.is_none() {
+      fallback_icns = Some(candidate.to_path_buf());
+    }
+  }
+
+  fallback_icns
+}
+
+#[cfg(target_os = "macos")]
+fn create_icns_preview(path: &Path, output_dir: &Path) -> Result<Option<String>, String> {
+  let Some(icon_path) = find_app_icns(path) else {
+    return Ok(None);
+  };
+
+  let output_path = output_dir.join("app-icon.png");
+  let args = [
+    std::ffi::OsStr::new("-s"),
+    std::ffi::OsStr::new("format"),
+    std::ffi::OsStr::new("png"),
+    std::ffi::OsStr::new("-Z"),
+    std::ffi::OsStr::new("96"),
+    icon_path.as_os_str(),
+    std::ffi::OsStr::new("--out"),
+    output_path.as_os_str(),
+  ];
+
+  let output = run_macos_command_with_timeout(
+    "/usr/bin/sips",
+    &args,
+    Duration::from_secs(2),
+  );
+
+  if output.as_ref().is_none_or(|value| !value.status.success()) || !output_path.is_file() {
+    return Ok(None);
+  }
+
+  let bytes = std::fs::read(&output_path).map_err(|error| error.to_string())?;
+  Ok(Some(bytes_to_data_url(&bytes, "image/png")))
+}
+
+#[cfg(target_os = "macos")]
+fn create_qlmanage_preview(path: &Path, output_dir: &Path) -> Result<Option<String>, String> {
+  let args = [
+    std::ffi::OsStr::new("-t"),
+    std::ffi::OsStr::new("-s"),
+    std::ffi::OsStr::new("96"),
+    std::ffi::OsStr::new("-o"),
+    output_dir.as_os_str(),
+    path.as_os_str(),
+  ];
+
+  let Some(output) = run_macos_command_with_timeout(
+    "/usr/bin/qlmanage",
+    &args,
+    Duration::from_secs(2),
+  ) else {
+    eprintln!("LookPlox qlmanage timed out while previewing {:?}", path);
+    return Ok(None);
+  };
+
+  if !output.status.success() {
+    eprintln!(
+      "LookPlox qlmanage could not preview {:?}: exit status {}",
+      path, output.status
+    );
+    return Ok(None);
+  }
+
+  let preview_path = std::fs::read_dir(output_dir)
+    .map_err(|error| error.to_string())?
+    .filter_map(Result::ok)
+    .map(|entry| entry.path())
+    .find(|candidate| {
+      candidate
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    });
+
+  match preview_path {
+    Some(preview_path) => {
+      let bytes = std::fs::read(preview_path).map_err(|error| error.to_string())?;
+      Ok(Some(bytes_to_data_url(&bytes, "image/png")))
+    }
+    None => Ok(None),
+  }
+}
+
 fn create_app_preview(path: &Path) -> Result<Option<String>, String> {
   #[cfg(target_os = "macos")]
   {
-    if !path.is_dir() || path.extension().and_then(|value| value.to_str()) != Some("app") {
+    if !path.is_dir()
+      || !path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+    {
       return Ok(None);
     }
 
@@ -1403,81 +1633,14 @@ fn create_app_preview(path: &Path) -> Result<Option<String>, String> {
 
     std::fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
 
-    let mut child = match std::process::Command::new("/usr/bin/qlmanage")
-      .args([
-        "-t",
-        "-s",
-        "96",
-        "-o",
-        output_dir.to_string_lossy().as_ref(),
-        path.to_string_lossy().as_ref(),
-      ])
-      .spawn()
-    {
-      Ok(child) => child,
-      Err(error) => {
-        eprintln!("LookPlox could not start qlmanage for {:?}: {error}", path);
-        let _ = std::fs::remove_dir_all(&output_dir);
-        return Ok(None);
-      }
-    };
-
-    // qlmanage can block for a long time on some applications. Never let one
-    // preview hold a worker forever.
-    let deadline = Instant::now() + Duration::from_secs(2);
-    let status = loop {
-      match child.try_wait() {
-        Ok(Some(status)) => break Some(status),
-        Ok(None) if Instant::now() >= deadline => {
-          let _ = child.kill();
-          let _ = child.wait();
-          eprintln!("LookPlox qlmanage timed out while previewing {:?}", path);
-          break None;
-        }
-        Ok(None) => std::thread::sleep(Duration::from_millis(40)),
-        Err(error) => {
-          let _ = child.kill();
-          let _ = child.wait();
-          eprintln!("LookPlox could not wait for qlmanage for {:?}: {error}", path);
-          break None;
-        }
-      }
-    };
-
-    let result = match status {
-      Some(status) if status.success() => {
-        let preview_path = std::fs::read_dir(&output_dir)
-          .map_err(|error| error.to_string())?
-          .filter_map(Result::ok)
-          .map(|entry| entry.path())
-          .find(|candidate| {
-            candidate
-              .extension()
-              .and_then(|value| value.to_str())
-              .map(|extension| extension.eq_ignore_ascii_case("png"))
-              .unwrap_or(false)
-          });
-
-        match preview_path {
-          Some(preview_path) => {
-            let bytes = std::fs::read(preview_path).map_err(|error| error.to_string())?;
-            Some(bytes_to_data_url(&bytes, "image/png"))
-          }
-          None => None,
-        }
-      }
-      Some(status) => {
-        eprintln!(
-          "LookPlox qlmanage could not preview {:?}: exit status {status}",
-          path
-        );
-        None
-      }
-      None => None,
-    };
+    // Prefer the icon declared by the app bundle itself. Modern macOS apps
+    // frequently use an .icns file referenced by Info.plist, and converting
+    // that file avoids the flaky/generic thumbnails qlmanage can return.
+    let result = create_icns_preview(path, &output_dir)?
+      .or(create_qlmanage_preview(path, &output_dir)?);
 
     let _ = std::fs::remove_dir_all(&output_dir);
-    return Ok(result);
+    Ok(result)
   }
 
   #[cfg(not(target_os = "macos"))]
