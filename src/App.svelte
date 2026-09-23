@@ -12,6 +12,11 @@
     preview?: string | null;
   };
 
+  type SearchResponse = {
+    results: SearchResult[];
+    suggestion: string | null;
+  };
+
   type SetupState = {
     initialized: boolean;
     roots: string[];
@@ -65,6 +70,7 @@
 
   let query = "";
   let results: SearchResult[] = [];
+  let searchSuggestion = "";
   let commandMatches: CommandItem[] = [];
   let selected = 0;
   let input: HTMLInputElement;
@@ -285,11 +291,13 @@
     }
   }
 
-  async function resizeSearchWindow(resultCount = 0) {
+  async function resizeSearchWindow(resultCount = 0, hasSuggestion = false) {
     const visibleResults = Math.min(Math.max(resultCount, 1), 8);
     const height =
       resultCount === 0
-        ? 104
+        ? hasSuggestion
+          ? 152
+          : 104
         : 12 + 68 + 10 + 16 + visibleResults * 56 + 10;
 
     await windowHandle.setSize(new LogicalSize(760, height));
@@ -575,6 +583,7 @@
     viewMode = "config";
     query = "";
     results = [];
+    searchSuggestion = "";
     commandMatches = [];
     selected = 0;
     setupError = "";
@@ -589,6 +598,7 @@
     viewMode = "help";
     query = "";
     results = [];
+    searchSuggestion = "";
     commandMatches = [];
     selected = 0;
     await resizeHelpWindow();
@@ -600,6 +610,7 @@
     viewMode = "search";
     query = "";
     results = [];
+    searchSuggestion = "";
     commandMatches = [];
     selected = 0;
     setupError = "";
@@ -618,6 +629,8 @@
         break;
       case "/add-folder":
         query = "";
+        results = [];
+        searchSuggestion = "";
         commandMatches = [];
         await addIndexFolder();
         break;
@@ -654,6 +667,7 @@
 
     query = "";
     results = [];
+    searchSuggestion = "";
     commandMatches = [];
     selected = 0;
     await resizeSearchWindow(0);
@@ -687,6 +701,7 @@
         item.command.startsWith(value.toLowerCase()),
       );
       results = [];
+      searchSuggestion = "";
       selected = Math.min(selected, Math.max(commandMatches.length - 1, 0));
       await resizeSearchWindow(commandMatches.length);
       return;
@@ -701,6 +716,7 @@
 
     if (!searchValue) {
       results = [];
+      searchSuggestion = "";
       selected = 0;
       await resizeSearchWindow(0);
       return;
@@ -709,22 +725,69 @@
     searching = true;
 
     try {
-      const nextResults = await invoke<SearchResult[]>("search_files", {
+      const response = await invoke<SearchResponse>("search_files", {
         query: searchValue,
         limit: settings.resultLimit,
         applicationsOnly,
       });
 
       if (currentRequest === requestId) {
-        results = nextResults;
-        selected = Math.min(selected, Math.max(nextResults.length - 1, 0));
-        await resizeSearchWindow(nextResults.length);
-        void refreshResultPreviews(nextResults, currentRequest);
+        results = response.results;
+        searchSuggestion = response.suggestion ?? "";
+        selected = Math.min(selected, Math.max(response.results.length - 1, 0));
+        await resizeSearchWindow(response.results.length, Boolean(response.suggestion));
+        void refreshResultPreviews(response.results, currentRequest);
       }
     } catch (error) {
       console.error("LookPlox search failed:", error);
       if (currentRequest === requestId) {
         results = [];
+        searchSuggestion = "";
+      }
+    } finally {
+      if (currentRequest === requestId) {
+        searching = false;
+      }
+    }
+  }
+
+  async function useSearchSuggestion() {
+    if (!searchSuggestion) {
+      return;
+    }
+
+    const currentRequest = ++requestId;
+    query = isApplicationQuery(query)
+      ? query.trim().replace(/^＠/, "@").slice(0, 1) + searchSuggestion
+      : searchSuggestion;
+    searchSuggestion = "";
+    selected = 0;
+    searching = true;
+
+    try {
+      const applicationQuery = normalizedApplicationQuery(query);
+      const applicationsOnly = applicationQuery.startsWith(APPLICATION_SEARCH_PREFIX);
+      const searchValue = applicationsOnly
+        ? applicationQuery.slice(APPLICATION_SEARCH_PREFIX.length).trim()
+        : query.trim();
+
+      const response = await invoke<SearchResponse>("search_files", {
+        query: searchValue,
+        limit: settings.resultLimit,
+        applicationsOnly,
+      });
+
+      if (currentRequest === requestId) {
+        results = response.results;
+        searchSuggestion = response.suggestion ?? "";
+        await resizeSearchWindow(response.results.length, Boolean(response.suggestion));
+        void refreshResultPreviews(response.results, currentRequest);
+      }
+    } catch (error) {
+      console.error("LookPlox suggested search failed:", error);
+      if (currentRequest === requestId) {
+        results = [];
+        searchSuggestion = "";
       }
     } finally {
       if (currentRequest === requestId) {
@@ -1314,6 +1377,13 @@
             </span>
           </button>
         {/each}
+      </section>
+    {:else if searchSuggestion}
+      <section class="suggestion" aria-label="Search suggestion">
+        <button type="button" class="suggestion-row" onclick={useSearchSuggestion}>
+          <span class="suggestion-label">もしかして</span>
+          <span class="suggestion-name">{searchSuggestion}</span>
+        </button>
       </section>
     {/if}
   </main>
