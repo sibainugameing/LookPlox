@@ -1509,7 +1509,7 @@
           <label class="settings-row">
             <span class="settings-copy">
               <span class="settings-title">Preview application icons</span>
-              <span class="settings-description">Show the native application icon for .app bundles on macOS.</span>
+              <span class="settings-description">Show native application icons where supported by the current platform.</span>
             </span>
             <input
               class="settings-switch"
