@@ -509,19 +509,16 @@
 
     setupError = "";
 
-    if (step === 2 && roots.length === 0 && setupStep === 3) {
+    if (step > setupStep) {
       return;
     }
 
-    setupStep = Math.max(1, Math.min(3, step));
-
-    if (setupStep === 2) {
-      void resizeSetupWindow();
-    } else if (setupStep === 1) {
-      void resizeSetupWindow();
-    } else {
-      void resizeSetupWindow();
+    if (step === 5 && roots.length === 0) {
+      return;
     }
+
+    setupStep = Math.max(1, Math.min(5, step));
+    void resizeSetupWindow();
   }
 
   function continueSetup() {
@@ -540,6 +537,18 @@
       }
 
       setupStep = 3;
+      void resizeSetupWindow();
+      return;
+    }
+
+    if (setupStep === 3) {
+      setupStep = 4;
+      void resizeSetupWindow();
+      return;
+    }
+
+    if (setupStep === 4) {
+      setupStep = 5;
       void resizeSetupWindow();
     }
   }
@@ -1012,182 +1021,393 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if setupMode}
-  <main class="setup-shell">
-    <section class="setup-card setup-wizard" aria-label="LookPlox initial setup">
-      <header class="wizard-header">
-        <div class="setup-kicker">LOOKPLOX</div>
-        <div class="wizard-progress" aria-label={"Setup step " + setupStep + " of 3"}>
-          {#each [1, 2, 3] as step}
-            <button
-              class:active={setupStep === step}
-              class:done={setupStep > step}
-              class="wizard-step"
-              type="button"
-              onclick={() => goToSetupStep(step)}
-              disabled={indexing || (step === 3 && roots.length === 0)}
-              aria-label={"Go to step " + step}
-            >
-              <span>{step}</span>
-            </button>
-            {#if step < 3}<span class="wizard-line"></span>{/if}
-          {/each}
+  {#if indexing}
+    <main class="indexing-shell">
+      <section class="setup-card indexing-card" aria-label="LookPlox indexing">
+        <div class="indexing-kicker">LOOKPLOX</div>
+
+        <div class="indexing-icon" aria-hidden="true">
+          <span class="indexing-ring"></span>
+          <span class="indexing-glyph">⌕</span>
         </div>
-      </header>
 
-      {#if setupStep === 1}
-        <div class="wizard-page wizard-welcome">
-          <div class="wizard-icon" aria-hidden="true">
-            <span>⌕</span>
+        <h1>Building your search index</h1>
+        <p class="indexing-lead">
+          LookPlox is scanning the folders you selected and building a local search index.
+        </p>
+
+        <div class="indexing-summary">
+          <div>
+            <span>Folders</span>
+            <strong>{roots.length}</strong>
           </div>
-          <h1>Welcome to LookPlox</h1>
-          <p class="wizard-lead">
-            A fast local search window for the files and folders you choose.
-          </p>
-
-          <div class="wizard-points">
-            <div>
-              <strong>Private by default</strong>
-              <span>The search index stays on this computer.</span>
-            </div>
-            <div>
-              <strong>Choose what gets indexed</strong>
-              <span>LookPlox only searches folders you add.</span>
-            </div>
-            <div>
-              <strong>Change it later</strong>
-              <span>You can add or remove folders from Settings.</span>
-            </div>
+          <div>
+            <span>Items scanned</span>
+            <strong>{indexedCount.toLocaleString()}</strong>
           </div>
         </div>
 
-        <footer class="wizard-footer">
-          <span>Step 1 of 3</span>
-          <button class="wizard-primary" type="button" onclick={continueSetup}>
-            Continue
-          </button>
-        </footer>
-      {:else if setupStep === 2}
-        <div class="wizard-page">
-          <div class="wizard-page-heading">
-            <div>
-              <div class="wizard-step-label">STEP 2</div>
-              <h1>Choose folders</h1>
-              <p>Select the locations LookPlox should search.</p>
-            </div>
-            <span class="root-count">{roots.length}</span>
+        <div class="indexing-progress-panel">
+          <div class="progress-track">
+            <div class="progress-indicator"></div>
           </div>
+          <div class="status-text indexing-status-text">
+            <span>{cancelRequested ? "Canceling…" : "Building local index…"}</span>
+            <span>{indexedCount.toLocaleString()} items scanned</span>
+          </div>
+        </div>
 
-          {#if roots.length > 0}
-            <div class="roots-list wizard-roots-list">
-              {#each roots as root, index}
-                <div class="root-row">
-                  <span class="folder-mark" aria-hidden="true">⌑</span>
-                  <span class="root-path">{root}</span>
-                  <button
-                    class="remove-root"
-                    type="button"
-                    onclick={() => removeRoot(index)}
-                    disabled={indexing}
-                    aria-label={"Remove " + root}
-                  >×</button>
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <div class="wizard-empty">
-              <strong>No folders selected</strong>
-              <span>Choose a common folder below or add another folder.</span>
-            </div>
-          {/if}
+        <div class="indexing-note">
+          <strong>This may take a while on a large folder.</strong>
+          <span>You can cancel the scan at any time. Your existing search window will appear when the initial index is ready.</span>
+        </div>
 
-          {#if suggestedFolders.length > 0}
-            <div class="quick-folders wizard-quick-folders">
-              <div class="quick-folders-heading">
-                <span>Common folders</span>
-                <span>Quick add</span>
+        <button
+          class="cancel-indexing indexing-cancel"
+          type="button"
+          onclick={cancelIndexing}
+          disabled={cancelRequested}
+        >
+          {cancelRequested ? "Canceling…" : "Cancel indexing"}
+        </button>
+      </section>
+    </main>
+  {:else}
+    <main class="setup-shell">
+      <section class="setup-card setup-wizard" aria-label="LookPlox initial setup">
+        <header class="wizard-header">
+          <div class="setup-kicker">LOOKPLOX</div>
+          <div class="wizard-progress" aria-label={"Setup step " + setupStep + " of 5"}>
+            {#each [1, 2, 3, 4, 5] as step}
+              <button
+                class:active={setupStep === step}
+                class:done={setupStep > step}
+                class="wizard-step"
+                type="button"
+                onclick={() => goToSetupStep(step)}
+                disabled={step > setupStep || (step === 5 && roots.length === 0)}
+                aria-label={"Go to step " + step}
+              >
+                <span>{step}</span>
+              </button>
+              {#if step < 5}<span class="wizard-line"></span>{/if}
+            {/each}
+          </div>
+        </header>
+
+        {#if setupStep === 1}
+          <div class="wizard-page wizard-welcome">
+            <div class="wizard-icon" aria-hidden="true">
+              <span>⌕</span>
+            </div>
+            <h1>Welcome to LookPlox</h1>
+            <p class="wizard-lead">
+              Set up your local file search before the first index is built.
+            </p>
+
+            <div class="wizard-points">
+              <div>
+                <strong>Private by default</strong>
+                <span>The search index stays on this computer.</span>
               </div>
-              <div class="quick-folders-grid">
-                {#each suggestedFolders as folder}
-                  {@const covered = isRootCovered(folder.path)}
-                  <button
-                    class:covered={covered}
-                    class="quick-folder"
-                    type="button"
-                    onclick={() => addSuggestedFolder(folder.path)}
-                    disabled={indexing || covered}
-                    title={folder.path}
-                  >
-                    <span class="quick-folder-icon" aria-hidden="true">⌑</span>
-                    <span>{folder.name}</span>
-                    <span class="quick-folder-state">{covered ? "Added" : "Add"}</span>
-                  </button>
+              <div>
+                <strong>Choose what gets indexed</strong>
+                <span>LookPlox only searches folders you add.</span>
+              </div>
+              <div>
+                <strong>Fast after setup</strong>
+                <span>Search uses a local index instead of rescanning every time.</span>
+              </div>
+            </div>
+
+            <div class="wizard-hotkey">
+              <span>Search window shortcut</span>
+              <kbd>Alt</kbd><span>+</span><kbd>Space</kbd>
+            </div>
+          </div>
+
+          <footer class="wizard-footer">
+            <span>Step 1 of 5</span>
+            <button class="wizard-primary" type="button" onclick={continueSetup}>
+              Continue
+            </button>
+          </footer>
+        {:else if setupStep === 2}
+          <div class="wizard-page">
+            <div class="wizard-page-heading">
+              <div>
+                <div class="wizard-step-label">STEP 2</div>
+                <h1>Choose folders</h1>
+                <p>Select the locations LookPlox should search.</p>
+              </div>
+              <span class="root-count">{roots.length}</span>
+            </div>
+
+            {#if roots.length > 0}
+              <div class="roots-list wizard-roots-list">
+                {#each roots as root, index}
+                  <div class="root-row">
+                    <span class="folder-mark" aria-hidden="true">⌑</span>
+                    <span class="root-path">{root}</span>
+                    <button
+                      class="remove-root"
+                      type="button"
+                      onclick={() => removeRoot(index)}
+                      disabled={indexing}
+                      aria-label={"Remove " + root}
+                    >×</button>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="wizard-empty">
+                <strong>No folders selected</strong>
+                <span>Choose a common folder below or add another folder.</span>
+              </div>
+            {/if}
+
+            {#if suggestedFolders.length > 0}
+              <div class="quick-folders wizard-quick-folders">
+                <div class="quick-folders-heading">
+                  <span>Common folders</span>
+                  <span>Quick add</span>
+                </div>
+                <div class="quick-folders-grid">
+                  {#each suggestedFolders as folder}
+                    {@const covered = isRootCovered(folder.path)}
+                    <button
+                      class:covered={covered}
+                      class="quick-folder"
+                      type="button"
+                      onclick={() => addSuggestedFolder(folder.path)}
+                      disabled={indexing || covered}
+                      title={folder.path}
+                    >
+                      <span class="quick-folder-icon" aria-hidden="true">⌑</span>
+                      <span>{folder.name}</span>
+                      <span class="quick-folder-state">{covered ? "Added" : "Add"}</span>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            <button class="add-folder wizard-add-folder" type="button" onclick={addFolder} disabled={indexing}>
+              <span>＋</span>
+              <span>Choose another folder</span>
+            </button>
+          </div>
+
+          <footer class="wizard-footer">
+            <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(1)} disabled={indexing}>
+              Back
+            </button>
+            <span class:error={Boolean(setupError)}>{setupError || "You can add more folders later."}</span>
+            <button class="wizard-primary" type="button" onclick={continueSetup} disabled={roots.length === 0 || indexing}>
+              Continue
+            </button>
+          </footer>
+        {:else if setupStep === 3}
+          <div class="wizard-page wizard-settings-page">
+            <div class="wizard-page-heading">
+              <div>
+                <div class="wizard-step-label">STEP 3</div>
+                <h1>Search preferences</h1>
+                <p>Choose how search results should behave.</p>
+              </div>
+            </div>
+
+            <div class="wizard-setting-list">
+              <label class="settings-row">
+                <span class="settings-copy">
+                  <span class="settings-title">Result limit</span>
+                  <span class="settings-description">Maximum number of matching items returned by each search.</span>
+                </span>
+                <select
+                  value={settings.resultLimit}
+                  onchange={(event) =>
+                    updateSettings({ resultLimit: Number((event.currentTarget as HTMLSelectElement).value) })}
+                >
+                  <option value="6">6</option>
+                  <option value="12">12</option>
+                  <option value="24">24</option>
+                  <option value="50">50</option>
+                </select>
+              </label>
+
+              <label class="settings-row">
+                <span class="settings-copy">
+                  <span class="settings-title">Show file paths</span>
+                  <span class="settings-description">Display the full path below each search result.</span>
+                </span>
+                <input
+                  class="settings-switch"
+                  type="checkbox"
+                  checked={settings.showPaths}
+                  onchange={(event) =>
+                    updateSettings({ showPaths: (event.currentTarget as HTMLInputElement).checked })}
+                />
+              </label>
+
+              <label class="settings-row">
+                <span class="settings-copy">
+                  <span class="settings-title">Hide when focus is lost</span>
+                  <span class="settings-description">Automatically hide the search window after clicking another app.</span>
+                </span>
+                <input
+                  class="settings-switch"
+                  type="checkbox"
+                  checked={settings.hideOnBlur}
+                  onchange={(event) =>
+                    updateSettings({ hideOnBlur: (event.currentTarget as HTMLInputElement).checked })}
+                />
+              </label>
+            </div>
+
+            <div class="wizard-info-card">
+              <strong>These settings can be changed later.</strong>
+              <span>Your choices are saved automatically while you go through setup.</span>
+            </div>
+          </div>
+
+          <footer class="wizard-footer">
+            <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(2)}>
+              Back
+            </button>
+            <span>Step 3 of 5</span>
+            <button class="wizard-primary" type="button" onclick={continueSetup}>
+              Continue
+            </button>
+          </footer>
+        {:else if setupStep === 4}
+          <div class="wizard-page wizard-settings-page">
+            <div class="wizard-page-heading">
+              <div>
+                <div class="wizard-step-label">STEP 4</div>
+                <h1>Appearance</h1>
+                <p>Set the visual style and result previews.</p>
+              </div>
+            </div>
+
+            <div class="wizard-setting-list">
+              <label class="settings-row">
+                <span class="settings-copy">
+                  <span class="settings-title">Theme</span>
+                  <span class="settings-description">Choose whether LookPlox follows the system appearance.</span>
+                </span>
+                <select
+                  value={settings.theme}
+                  onchange={(event) =>
+                    updateSettings({
+                      theme: (event.currentTarget as HTMLSelectElement).value as Theme,
+                    })}
+                >
+                  <option value="system">System</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+
+              <label class="settings-row">
+                <span class="settings-copy">
+                  <span class="settings-title">Preview image files</span>
+                  <span class="settings-description">Show thumbnails for supported image files in search results.</span>
+                </span>
+                <input
+                  class="settings-switch"
+                  type="checkbox"
+                  checked={settings.previewImages}
+                  onchange={(event) =>
+                    updateSettings({ previewImages: (event.currentTarget as HTMLInputElement).checked })}
+                />
+              </label>
+
+              <label class="settings-row">
+                <span class="settings-copy">
+                  <span class="settings-title">Preview application icons</span>
+                  <span class="settings-description">Show native application icons for supported app bundles.</span>
+                </span>
+                <input
+                  class="settings-switch"
+                  type="checkbox"
+                  checked={settings.previewApplications}
+                  onchange={(event) =>
+                    updateSettings({ previewApplications: (event.currentTarget as HTMLInputElement).checked })}
+                />
+              </label>
+            </div>
+
+            <div class="wizard-info-card">
+              <strong>Preview generation can use extra system work.</strong>
+              <span>You can turn previews off later if you prefer a leaner search window.</span>
+            </div>
+          </div>
+
+          <footer class="wizard-footer">
+            <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(3)}>
+              Back
+            </button>
+            <span>Step 4 of 5</span>
+            <button class="wizard-primary" type="button" onclick={continueSetup}>
+              Continue
+            </button>
+          </footer>
+        {:else}
+          <div class="wizard-page wizard-review">
+            <div class="wizard-page-heading">
+              <div>
+                <div class="wizard-step-label">STEP 5</div>
+                <h1>Ready to build</h1>
+                <p>Review your setup before the first index is created.</p>
+              </div>
+            </div>
+
+            <div class="review-card">
+              <div class="review-card-heading">
+                <span>Folders to index</span>
+                <span>{roots.length}</span>
+              </div>
+              <div class="review-list">
+                {#each roots as root}
+                  <div class="review-row">
+                    <span class="folder-mark" aria-hidden="true">⌑</span>
+                    <span class="root-path">{root}</span>
+                  </div>
                 {/each}
               </div>
             </div>
-          {/if}
 
-          <button class="add-folder wizard-add-folder" type="button" onclick={addFolder} disabled={indexing}>
-            <span>＋</span>
-            <span>Choose another folder</span>
-          </button>
-        </div>
+            <div class="review-grid">
+              <div class="review-stat">
+                <span>Results</span>
+                <strong>{settings.resultLimit}</strong>
+                <small>max items</small>
+              </div>
+              <div class="review-stat">
+                <span>Paths</span>
+                <strong>{settings.showPaths ? "On" : "Off"}</strong>
+                <small>result paths</small>
+              </div>
+              <div class="review-stat">
+                <span>Theme</span>
+                <strong>{settings.theme === "system" ? "System" : settings.theme === "light" ? "Light" : "Dark"}</strong>
+                <small>appearance</small>
+              </div>
+              <div class="review-stat">
+                <span>Previews</span>
+                <strong>{settings.previewImages || settings.previewApplications ? "On" : "Off"}</strong>
+                <small>image / app icons</small>
+              </div>
+            </div>
 
-        <footer class="wizard-footer">
-          <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(1)} disabled={indexing}>
-            Back
-          </button>
-          <span class:error={Boolean(setupError)}>{setupError || "You can add more folders later."}</span>
-          <button class="wizard-primary" type="button" onclick={continueSetup} disabled={roots.length === 0 || indexing}>
-            Continue
-          </button>
-        </footer>
-      {:else}
-        <div class="wizard-page wizard-review">
-          <div class="wizard-page-heading">
-            <div>
-              <div class="wizard-step-label">STEP 3</div>
-              <h1>Ready to build</h1>
-              <p>LookPlox will create a local index for these folders.</p>
+            <div class="review-note">
+              <strong>What happens next</strong>
+              <span>The selected folders will be scanned and a local index will be created. The search window opens automatically when it is ready.</span>
             </div>
           </div>
 
-          <div class="review-card">
-            <div class="review-card-heading">
-              <span>Folders to index</span>
-              <span>{roots.length}</span>
-            </div>
-            <div class="review-list">
-              {#each roots as root}
-                <div class="review-row">
-                  <span class="folder-mark" aria-hidden="true">⌑</span>
-                  <span class="root-path">{root}</span>
-                </div>
-              {/each}
-            </div>
-          </div>
-
-          <div class="review-note">
-            <strong>What happens next</strong>
-            <span>The first scan may take a little while. You can cancel it, and your folders can be changed later in Settings.</span>
-          </div>
-        </div>
-
-        {#if indexing}
-          <div class="indexing-status wizard-indexing">
-            <div class="progress-track"><div class="progress-indicator"></div></div>
-            <div class="status-text">
-              <span>{cancelRequested ? "Canceling…" : "Building search index…"}</span>
-              <span>{indexedCount.toLocaleString()} files scanned</span>
-            </div>
-            <button class="cancel-indexing" type="button" onclick={cancelIndexing} disabled={cancelRequested}>
-              {cancelRequested ? "Canceling…" : "Cancel"}
-            </button>
-          </div>
-        {/if}
-
-        {#if !indexing}
           <footer class="wizard-footer">
-            <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(2)}>
+            <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(4)}>
               Back
             </button>
             <span class:error={Boolean(setupError)}>{setupError || "Ready to build the local search index."}</span>
@@ -1196,9 +1416,9 @@
             </button>
           </footer>
         {/if}
-      {/if}
-    </section>
-  </main>
+      </section>
+    </main>
+  {/if}
 {:else if viewMode === "config"}
   <main class="config-shell">
     <section class="settings-card" aria-label="LookPlox settings">
