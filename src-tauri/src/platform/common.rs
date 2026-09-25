@@ -1,12 +1,33 @@
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ApplicationEntry {
   pub(crate) name: String,
   pub(crate) path: PathBuf,
+}
+
+pub(crate) struct ApplicationCache {
+  pub(crate) refreshed_at: Option<Instant>,
+  pub(crate) entries: Vec<ApplicationEntry>,
+}
+
+impl ApplicationCache {
+  pub(crate) fn new() -> Self {
+    Self {
+      refreshed_at: None,
+      entries: Vec::new(),
+    }
+  }
+
+  pub(crate) fn is_fresh(&self) -> bool {
+    self
+      .refreshed_at
+      .is_some_and(|value| value.elapsed() < Duration::from_secs(30))
+  }
 }
 
 pub(crate) fn application_extension_trimmed(name: &str) -> &str {
