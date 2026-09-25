@@ -28,7 +28,7 @@ use platform::{
   create_application_preview, discover_applications, is_application_container,
   is_application_path,
   is_inside_application_container, open_path as platform_open_path, should_walk_entry,
-  ApplicationEntry,
+  ApplicationCache, ApplicationEntry,
 };
 
 pub struct AppState {
