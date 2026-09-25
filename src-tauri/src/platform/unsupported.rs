@@ -16,6 +16,18 @@ pub(crate) fn discover_applications() -> Vec<ApplicationEntry> {
   Vec::new()
 }
 
+pub(crate) fn is_application_container(_path: &Path) -> bool {
+  false
+}
+
+pub(crate) fn is_inside_application_container(_path: &Path) -> bool {
+  false
+}
+
+pub(crate) fn should_walk_entry(_path: &Path) -> bool {
+  true
+}
+
 pub(crate) fn create_application_preview(_path: &Path) -> Result<Option<String>, String> {
   Ok(None)
 }
