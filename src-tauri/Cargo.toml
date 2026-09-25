@@ -1,7 +1,7 @@
 [package]
 name = "lookplox"
 version = "0.1.0"
-description = "Fast local file search for macOS, with Windows in mind."
+description = "Fast local file search for macOS, Windows, and Linux."
 authors = ["sibainugameing"]
 edition = "2021"
 
@@ -25,4 +25,6 @@ notify = "8"
 walkdir = "2"
 regex = "1"
 dirs = "6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
 window-vibrancy = "0.8"
