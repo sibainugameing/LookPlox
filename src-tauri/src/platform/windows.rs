@@ -40,14 +40,14 @@ pub(crate) fn application_search_roots() -> Vec<PathBuf> {
   }
 
   if let Some(value) = std::env::var_os("LOCALAPPDATA") {
-    roots.push(PathBuf::from(value));
+    let base = PathBuf::from(value);
+    roots.push(base.join("Programs"));
+    roots.push(base.join("Microsoft").join("WindowsApps"));
   }
 
   if let Some(value) = std::env::var_os("APPDATA") {
-    let base = PathBuf::from(value);
-    roots.push(base.clone());
     roots.push(
-      base
+      PathBuf::from(value)
         .join("Microsoft")
         .join("Windows")
         .join("Start Menu")
@@ -69,7 +69,7 @@ pub(crate) fn application_search_roots() -> Vec<PathBuf> {
 }
 
 pub(crate) fn discover_applications() -> Vec<ApplicationEntry> {
-  discover_applications_from_roots(application_search_roots(), 4, is_application_path, should_walk_entry)
+  discover_applications_from_roots(application_search_roots(), 3, is_application_path, should_walk_entry)
 }
 
 pub(crate) fn create_application_preview(_path: &Path) -> Result<Option<String>, String> {
