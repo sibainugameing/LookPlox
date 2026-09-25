@@ -300,6 +300,41 @@ pub struct SetupState {
   pub roots: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SuggestedFolder {
+  pub id: String,
+  pub name: String,
+  pub path: String,
+}
+
+fn get_suggested_folders() -> Vec<SuggestedFolder> {
+  let candidates = [
+    ("desktop", "Desktop", dirs::desktop_dir()),
+    ("documents", "Documents", dirs::document_dir()),
+    ("downloads", "Downloads", dirs::download_dir()),
+    ("pictures", "Pictures", dirs::picture_dir()),
+    ("videos", "Videos", dirs::video_dir()),
+  ];
+
+  let mut seen = HashSet::<PathBuf>::new();
+
+  candidates
+    .into_iter()
+    .filter_map(|(id, name, path)| {
+      let path = path?;
+      if !path.is_dir() || !seen.insert(path.clone()) {
+        return None;
+      }
+
+      Some(SuggestedFolder {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        path: path.to_string_lossy().into_owned(),
+      })
+    })
+    .collect()
+}
+
 #[derive(Debug, Serialize)]
 pub struct IndexingStatus {
   pub running: bool,
@@ -2476,6 +2511,7 @@ pub fn run() {
     })
     .invoke_handler(tauri::generate_handler![
       get_settings,
+      get_suggested_folders,
       save_settings,
       get_storage_locations,
       change_storage_locations,
