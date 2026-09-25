@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use tantivy::collector::TopDocs;
 use tantivy::doc;
-use tantivy::query::{BooleanQuery, Query, RegexQuery, TermQuery};
+use tantivy::query::{BooleanQuery, MatchAllDocsQuery, Query, TermQuery};
 use tantivy::schema::{
   Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
 };
@@ -736,43 +736,49 @@ impl SearchEngine {
   pub fn remove_subtree(&self, path: &Path) -> tantivy::Result<()> {
     let raw_path = path.to_string_lossy().into_owned();
     let normalized_path = raw_path.trim_end_matches(['/', '\\']).to_string();
+
+    if raw_path.is_empty() && normalized_path.is_empty() {
+      return Ok(());
+    }
+
     let prefix = if normalized_path.is_empty() {
       raw_path.clone()
     } else {
       format!("{}{}", normalized_path, std::path::MAIN_SEPARATOR)
     };
 
-    let escaped_prefix: String = prefix
-      .chars()
-      .flat_map(|character| {
-        if r#"\\.^$|()[]{}*+?"#.contains(character) {
-          ['\\', character].into_iter().collect::<Vec<_>>()
-        } else {
-          [character].into_iter().collect::<Vec<_>>()
-        }
-      })
-      .collect();
-
-    let pattern = format!("^{}", escaped_prefix);
+    // Do not build a regex from filesystem paths. Paths can contain regex
+    // metacharacters, and Tantivy's regex parser rejects some escaped forms.
+    // Instead, inspect the stored path values and remove exact descendants.
     let searcher = self.reader.searcher();
-    let query = RegexQuery::from_pattern(&pattern, self.path_field)?;
-    let top_docs = searcher.search(&query, &TopDocs::with_limit(1_000_000).order_by_score())?;
+    let top_docs = searcher
+      .search(&MatchAllDocsQuery, &TopDocs::with_limit(1_000_000))
+      .map_err(|error| tantivy::TantivyError::InvalidArgument(error.to_string()))?;
 
-    let mut paths_to_remove = Vec::with_capacity(top_docs.len() + 2);
+    let mut paths_to_remove = HashSet::<String>::with_capacity(top_docs.len() + 2);
+
     if !raw_path.is_empty() {
-      paths_to_remove.push(raw_path);
+      paths_to_remove.insert(raw_path);
     }
+
     if !normalized_path.is_empty() {
-      paths_to_remove.push(normalized_path);
+      paths_to_remove.insert(normalized_path);
     }
 
     for (_, address) in top_docs {
       let document: TantivyDocument = searcher.doc::<TantivyDocument>(address)?;
-      if let Some(value) = document
+
+      let Some(value) = document
         .get_first(self.path_field)
         .and_then(|value| value.as_str())
+      else {
+        continue;
+      };
+
+      if value == prefix.trim_end_matches(['/', '\\'])
+        || value.starts_with(&prefix)
       {
-        paths_to_remove.push(value.to_owned());
+        paths_to_remove.insert(value.to_owned());
       }
     }
 
