@@ -287,50 +287,6 @@ fn create_icns_preview(path: &Path, output_dir: &Path) -> Result<Option<String>,
   Ok(Some(bytes_to_data_url(&bytes, "image/png")))
 }
 
-fn create_qlmanage_preview(path: &Path, output_dir: &Path) -> Result<Option<String>, String> {
-  let args = [
-    OsStr::new("-t"),
-    OsStr::new("-s"),
-    OsStr::new("96"),
-    OsStr::new("-o"),
-    output_dir.as_os_str(),
-    path.as_os_str(),
-  ];
-
-  let Some(output) = run_command_with_timeout("/usr/bin/qlmanage", &args, Duration::from_secs(2))
-  else {
-    eprintln!("LookPlox qlmanage timed out while previewing {:?}", path);
-    return Ok(None);
-  };
-
-  if !output.status.success() {
-    eprintln!(
-      "LookPlox qlmanage could not preview {:?}: exit status {}",
-      path, output.status
-    );
-    return Ok(None);
-  }
-
-  let preview_path = std::fs::read_dir(output_dir)
-    .map_err(|error| error.to_string())?
-    .filter_map(Result::ok)
-    .map(|entry| entry.path())
-    .find(|candidate| {
-      candidate
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
-    });
-
-  match preview_path {
-    Some(preview_path) => {
-      let bytes = std::fs::read(preview_path).map_err(|error| error.to_string())?;
-      Ok(Some(bytes_to_data_url(&bytes, "image/png")))
-    }
-    None => Ok(None),
-  }
-}
-
 pub(crate) fn create_application_preview(path: &Path) -> Result<Option<String>, String> {
   if !is_application_path(path) || !path.is_dir() {
     return Ok(None);
@@ -348,8 +304,9 @@ pub(crate) fn create_application_preview(path: &Path) -> Result<Option<String>, 
 
   std::fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
 
-  let result = create_icns_preview(path, &output_dir)?
-    .or(create_qlmanage_preview(path, &output_dir)?);
+  // Avoid Quick Look process startup during every application search result.
+  // The bundle's declared ICNS icon is the fast native path; missing icons simply have no preview.
+  let result = create_icns_preview(path, &output_dir)?;
 
   let _ = std::fs::remove_dir_all(&output_dir);
   Ok(result)
