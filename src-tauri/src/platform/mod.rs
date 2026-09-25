@@ -22,17 +22,20 @@ pub(crate) use linux::{
 #[cfg(target_os = "macos")]
 pub(crate) use macos::{
   configure_main_window, create_application_preview, discover_applications,
-  is_application_path, open_path,
+  is_application_container, is_application_path, is_inside_application_container,
+  open_path, should_walk_entry,
 };
 
 #[cfg(target_os = "windows")]
 pub(crate) use windows::{
   configure_main_window, create_application_preview, discover_applications,
-  is_application_path, open_path,
+  is_application_container, is_application_path, is_inside_application_container,
+  open_path, should_walk_entry,
 };
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub(crate) use unsupported::{
   configure_main_window, create_application_preview, discover_applications,
-  is_application_path, open_path,
+  is_application_container, is_application_path, is_inside_application_container,
+  open_path, should_walk_entry,
 };
