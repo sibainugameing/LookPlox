@@ -21,12 +21,16 @@ pub(crate) fn is_application_path(path: &Path) -> bool {
     .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
 }
 
-fn is_app_bundle(path: &Path) -> bool {
+pub(crate) fn is_application_container(path: &Path) -> bool {
   is_application_path(path)
 }
 
-fn should_walk_entry(path: &Path) -> bool {
-  !path.ancestors().skip(1).any(is_app_bundle)
+pub(crate) fn is_inside_application_container(path: &Path) -> bool {
+  path.ancestors().skip(1).any(is_application_container)
+}
+
+pub(crate) fn should_walk_entry(path: &Path) -> bool {
+  !is_inside_application_container(path)
 }
 
 pub(crate) fn application_search_roots() -> Vec<PathBuf> {
