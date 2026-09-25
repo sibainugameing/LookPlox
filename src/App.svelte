@@ -22,6 +22,12 @@
     roots: string[];
   };
 
+  type SuggestedFolder = {
+    id: string;
+    name: string;
+    path: string;
+  };
+
   type IndexingStatus = {
     running: boolean;
     indexed: number;
@@ -80,6 +86,7 @@
 
   let setupMode = true;
   let roots: string[] = [];
+  let suggestedFolders: SuggestedFolder[] = [];
   let indexing = false;
   let cancelRequested = false;
   let indexedCount = 0;
@@ -314,7 +321,7 @@
   }
 
   async function resizeSetupWindow() {
-    await windowHandle.setSize(new LogicalSize(760, 540));
+    await windowHandle.setSize(new LogicalSize(760, 580));
     await centerWindowSlightlyAbove();
   }
 
@@ -368,6 +375,23 @@
         ...roots.filter((root) => !isSameOrChildPath(root, candidate)),
         candidate,
       ];
+    }
+  }
+
+  function isRootCovered(path: string) {
+    return roots.some((root) => isSameOrChildPath(path, root));
+  }
+
+  function addSuggestedFolder(path: string) {
+    addRootCandidate(path);
+  }
+
+  async function loadSuggestedFolders() {
+    try {
+      suggestedFolders = await invoke<SuggestedFolder[]>("get_suggested_folders");
+    } catch (error) {
+      console.error("LookPlox suggested folders could not be loaded:", error);
+      suggestedFolders = [];
     }
   }
 
@@ -887,8 +911,11 @@
     let unlistenFocus: (() => void) | undefined;
 
     const initialize = async () => {
-      await loadSettings();
-      await loadStorageLocations();
+      await Promise.all([
+        loadSettings(),
+        loadStorageLocations(),
+        loadSuggestedFolders(),
+      ]);
 
       try {
         const state = await invoke<SetupState>("get_setup_state");
@@ -1003,6 +1030,38 @@
             <span>＋</span>
             <span>Add folder</span>
           </button>
+
+          {#if suggestedFolders.length > 0}
+            <div class="quick-folders">
+              <div class="quick-folders-heading">
+                <span>Common folders</span>
+                <span>Quick add</span>
+              </div>
+
+              <div class="quick-folders-grid">
+                {#each suggestedFolders as folder}
+                  {@const covered = isRootCovered(folder.path)}
+                  <button
+                    class:covered={covered}
+                    class="quick-folder"
+                    type="button"
+                    onclick={() => addSuggestedFolder(folder.path)}
+                    disabled={indexing || covered}
+                    title={folder.path}
+                  >
+                    <span class="quick-folder-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                        <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                      </svg>
+                    </span>
+                    <span>{folder.name}</span>
+                    <span class="quick-folder-state">{covered ? "Added" : "Add"}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </div>
 
         <aside class="setup-guide" aria-label="How LookPlox works">
