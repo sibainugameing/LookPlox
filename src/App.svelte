@@ -314,7 +314,7 @@
   }
 
   async function resizeSetupWindow() {
-    await windowHandle.setSize(new LogicalSize(760, 480));
+    await windowHandle.setSize(new LogicalSize(760, 540));
     await centerWindowSlightlyAbove();
   }
 
@@ -944,48 +944,98 @@
   <main class="setup-shell">
     <section class="setup-card" aria-label="LookPlox initial setup">
       <header class="setup-header">
-        <div>
+        <div class="setup-title-block">
           <div class="setup-kicker">LOOKPLOX</div>
-          <h1>Choose what LookPlox should index</h1>
+          <h1>Set up local search</h1>
           <p>
-            Select one or more folders. LookPlox will search file names inside
-            them and keep the index updated.
+            Choose the folders you want LookPlox to search. Only the folders
+            you select are indexed, and you can change them later in Settings.
           </p>
+        </div>
+
+        <div class="setup-badges" aria-label="LookPlox setup features">
+          <span>Local index</span>
+          <span>File names</span>
+          <span>Auto updates</span>
         </div>
       </header>
 
-      <div class="roots-panel">
-        <div class="roots-heading">
-          <span>Folders to index</span>
-          <span class="root-count">{roots.length}</span>
+      <div class="setup-grid">
+        <div class="roots-panel">
+          <div class="roots-heading">
+            <div>
+              <span>Folders to index</span>
+              <span class="roots-subtitle">Choose one or more locations</span>
+            </div>
+            <span class="root-count">{roots.length}</span>
+          </div>
+
+          {#if roots.length > 0}
+            <div class="roots-list">
+              {#each roots as root, index}
+                <div class="root-row">
+                  <span class="folder-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                      <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <span class="root-path">{root}</span>
+                  <button
+                    class="remove-root"
+                    type="button"
+                    onclick={() => removeRoot(index)}
+                    disabled={indexing}
+                    aria-label={"Remove " + root}
+                  >×</button>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="empty-roots">
+              <div class="empty-roots-icon" aria-hidden="true">＋</div>
+              <strong>No folders selected</strong>
+              <span>Add Documents, Desktop, Downloads, or any folder you use often.</span>
+            </div>
+          {/if}
+
+          <button class="add-folder" type="button" onclick={addFolder} disabled={indexing}>
+            <span>＋</span>
+            <span>Add folder</span>
+          </button>
         </div>
 
-        {#if roots.length > 0}
-          <div class="roots-list">
-            {#each roots as root, index}
-              <div class="root-row">
-                <span class="folder-mark">□</span>
-                <span class="root-path">{root}</span>
-                <button
-                  class="remove-root"
-                  type="button"
-                  onclick={() => removeRoot(index)}
-                  disabled={indexing}
-                  aria-label={"Remove " + root}
-                >×</button>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <div class="empty-roots">
-            No folders selected yet.
-          </div>
-        {/if}
+        <aside class="setup-guide" aria-label="How LookPlox works">
+          <div class="setup-guide-heading">How it works</div>
 
-        <button class="add-folder" type="button" onclick={addFolder} disabled={indexing}>
-          <span>＋</span>
-          <span>Add folder</span>
-        </button>
+          <div class="setup-guide-item">
+            <span class="setup-guide-number">01</span>
+            <div>
+              <strong>Choose folders</strong>
+              <span>Pick the locations you actually want to search.</span>
+            </div>
+          </div>
+
+          <div class="setup-guide-item">
+            <span class="setup-guide-number">02</span>
+            <div>
+              <strong>Build the index</strong>
+              <span>The first scan creates the local search index.</span>
+            </div>
+          </div>
+
+          <div class="setup-guide-item">
+            <span class="setup-guide-number">03</span>
+            <div>
+              <strong>Search instantly</strong>
+              <span>Press Alt/Option + Space to bring LookPlox back.</span>
+            </div>
+          </div>
+
+          <div class="setup-guide-note">
+            You can add or remove indexed folders at any time from Settings.
+          </div>
+        </aside>
       </div>
 
       {#if indexing}
@@ -1017,7 +1067,7 @@
             onclick={finishSetup}
             disabled={roots.length === 0}
           >
-            Start indexing
+            Build index
           </button>
         </div>
       {/if}
