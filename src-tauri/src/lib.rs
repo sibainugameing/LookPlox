@@ -674,7 +674,7 @@ impl SearchEngine {
   }
 
   pub fn clear(&self) -> tantivy::Result<()> {
-    let writer = self
+    let mut writer = self
       .writer
       .lock()
       .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
