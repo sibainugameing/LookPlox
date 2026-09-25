@@ -14,7 +14,15 @@ pub(crate) fn is_application_path(path: &Path) -> bool {
     .is_some_and(|extension| extension.eq_ignore_ascii_case("desktop"))
 }
 
-fn should_walk_entry(_path: &Path) -> bool {
+pub(crate) fn is_application_container(_path: &Path) -> bool {
+  false
+}
+
+pub(crate) fn is_inside_application_container(_path: &Path) -> bool {
+  false
+}
+
+pub(crate) fn should_walk_entry(_path: &Path) -> bool {
   true
 }
 
