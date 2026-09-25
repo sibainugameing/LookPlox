@@ -85,6 +85,7 @@
   let viewMode: "search" | "config" | "help" = "search";
 
   let setupMode = true;
+  let setupStep = 1;
   let roots: string[] = [];
   let suggestedFolders: SuggestedFolder[] = [];
   let indexing = false;
@@ -501,11 +502,54 @@
     }
   }
 
+  function goToSetupStep(step: number) {
+    if (indexing) {
+      return;
+    }
+
+    setupError = "";
+
+    if (step === 2 && roots.length === 0 && setupStep === 3) {
+      return;
+    }
+
+    setupStep = Math.max(1, Math.min(3, step));
+
+    if (setupStep === 2) {
+      void resizeSetupWindow();
+    } else if (setupStep === 1) {
+      void resizeSetupWindow();
+    } else {
+      void resizeSetupWindow();
+    }
+  }
+
+  function continueSetup() {
+    setupError = "";
+
+    if (setupStep === 1) {
+      setupStep = 2;
+      void resizeSetupWindow();
+      return;
+    }
+
+    if (setupStep === 2) {
+      if (roots.length === 0) {
+        setupError = "Choose at least one folder to continue.";
+        return;
+      }
+
+      setupStep = 3;
+      void resizeSetupWindow();
+    }
+  }
+
   async function finishSetup() {
     setupError = "";
 
     if (roots.length === 0) {
-      setupError = "Add at least one folder to continue.";
+      setupStep = 2;
+      setupError = "Choose at least one folder to continue.";
       return;
     }
 
@@ -969,44 +1013,75 @@
 
 {#if setupMode}
   <main class="setup-shell">
-    <section class="setup-card" aria-label="LookPlox initial setup">
-      <header class="setup-header">
-        <div class="setup-title-block">
-          <div class="setup-kicker">LOOKPLOX</div>
-          <h1>Set up local search</h1>
-          <p>
-            Choose the folders you want LookPlox to search. Only the folders
-            you select are indexed, and you can change them later in Settings.
-          </p>
-        </div>
-
-        <div class="setup-badges" aria-label="LookPlox setup features">
-          <span>Local index</span>
-          <span>File names</span>
-          <span>Auto updates</span>
+    <section class="setup-card setup-wizard" aria-label="LookPlox initial setup">
+      <header class="wizard-header">
+        <div class="setup-kicker">LOOKPLOX</div>
+        <div class="wizard-progress" aria-label={"Setup step " + setupStep + " of 3"}>
+          {#each [1, 2, 3] as step}
+            <button
+              class:active={setupStep === step}
+              class:done={setupStep > step}
+              class="wizard-step"
+              type="button"
+              onclick={() => goToSetupStep(step)}
+              disabled={indexing || (step === 3 && roots.length === 0)}
+              aria-label={"Go to step " + step}
+            >
+              <span>{step}</span>
+            </button>
+            {#if step < 3}<span class="wizard-line"></span>{/if}
+          {/each}
         </div>
       </header>
 
-      <div class="setup-grid">
-        <div class="roots-panel">
-          <div class="roots-heading">
+      {#if setupStep === 1}
+        <div class="wizard-page wizard-welcome">
+          <div class="wizard-icon" aria-hidden="true">
+            <span>⌕</span>
+          </div>
+          <h1>Welcome to LookPlox</h1>
+          <p class="wizard-lead">
+            A fast local search window for the files and folders you choose.
+          </p>
+
+          <div class="wizard-points">
             <div>
-              <span>Folders to index</span>
-              <span class="roots-subtitle">Choose one or more locations</span>
+              <strong>Private by default</strong>
+              <span>The search index stays on this computer.</span>
+            </div>
+            <div>
+              <strong>Choose what gets indexed</strong>
+              <span>LookPlox only searches folders you add.</span>
+            </div>
+            <div>
+              <strong>Change it later</strong>
+              <span>You can add or remove folders from Settings.</span>
+            </div>
+          </div>
+        </div>
+
+        <footer class="wizard-footer">
+          <span>Step 1 of 3</span>
+          <button class="wizard-primary" type="button" onclick={continueSetup}>
+            Continue
+          </button>
+        </footer>
+      {:else if setupStep === 2}
+        <div class="wizard-page">
+          <div class="wizard-page-heading">
+            <div>
+              <div class="wizard-step-label">STEP 2</div>
+              <h1>Choose folders</h1>
+              <p>Select the locations LookPlox should search.</p>
             </div>
             <span class="root-count">{roots.length}</span>
           </div>
 
           {#if roots.length > 0}
-            <div class="roots-list">
+            <div class="roots-list wizard-roots-list">
               {#each roots as root, index}
                 <div class="root-row">
-                  <span class="folder-mark" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none">
-                      <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                      <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                    </svg>
-                  </span>
+                  <span class="folder-mark" aria-hidden="true">⌑</span>
                   <span class="root-path">{root}</span>
                   <button
                     class="remove-root"
@@ -1019,25 +1094,18 @@
               {/each}
             </div>
           {:else}
-            <div class="empty-roots">
-              <div class="empty-roots-icon" aria-hidden="true">＋</div>
+            <div class="wizard-empty">
               <strong>No folders selected</strong>
-              <span>Add Documents, Desktop, Downloads, or any folder you use often.</span>
+              <span>Choose a common folder below or add another folder.</span>
             </div>
           {/if}
 
-          <button class="add-folder" type="button" onclick={addFolder} disabled={indexing}>
-            <span>＋</span>
-            <span>Add folder</span>
-          </button>
-
           {#if suggestedFolders.length > 0}
-            <div class="quick-folders">
+            <div class="quick-folders wizard-quick-folders">
               <div class="quick-folders-heading">
                 <span>Common folders</span>
                 <span>Quick add</span>
               </div>
-
               <div class="quick-folders-grid">
                 {#each suggestedFolders as folder}
                   {@const covered = isRootCovered(folder.path)}
@@ -1049,12 +1117,7 @@
                     disabled={indexing || covered}
                     title={folder.path}
                   >
-                    <span class="quick-folder-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none">
-                        <path d="M3.5 7.5h6l2 2h9v8.75a1.25 1.25 0 0 1-1.25 1.25H4.75A1.25 1.25 0 0 1 3.5 18.25V7.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                        <path d="M3.5 7.5V6.25A1.25 1.25 0 0 1 4.75 5h4l2 2h8.5A1.25 1.25 0 0 1 20.5 8.25V9.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                      </svg>
-                    </span>
+                    <span class="quick-folder-icon" aria-hidden="true">⌑</span>
                     <span>{folder.name}</span>
                     <span class="quick-folder-state">{covered ? "Added" : "Add"}</span>
                   </button>
@@ -1062,73 +1125,77 @@
               </div>
             </div>
           {/if}
-        </div>
 
-        <aside class="setup-guide" aria-label="How LookPlox works">
-          <div class="setup-guide-heading">How it works</div>
-
-          <div class="setup-guide-item">
-            <span class="setup-guide-number">01</span>
-            <div>
-              <strong>Choose folders</strong>
-              <span>Pick the locations you actually want to search.</span>
-            </div>
-          </div>
-
-          <div class="setup-guide-item">
-            <span class="setup-guide-number">02</span>
-            <div>
-              <strong>Build the index</strong>
-              <span>The first scan creates the local search index.</span>
-            </div>
-          </div>
-
-          <div class="setup-guide-item">
-            <span class="setup-guide-number">03</span>
-            <div>
-              <strong>Search instantly</strong>
-              <span>Press Alt/Option + Space to bring LookPlox back.</span>
-            </div>
-          </div>
-
-          <div class="setup-guide-note">
-            You can add or remove indexed folders at any time from Settings.
-          </div>
-        </aside>
-      </div>
-
-      {#if indexing}
-        <div class="indexing-status">
-          <div class="progress-track">
-            <div class="progress-indicator"></div>
-          </div>
-          <div class="status-text">
-            <span>{cancelRequested ? "Canceling…" : "Building search index…"}</span>
-            <span>{indexedCount.toLocaleString()} files scanned</span>
-          </div>
-          <button
-            class="cancel-indexing"
-            type="button"
-            onclick={cancelIndexing}
-            disabled={cancelRequested}
-          >
-            {cancelRequested ? "Canceling…" : "Cancel"}
+          <button class="add-folder wizard-add-folder" type="button" onclick={addFolder} disabled={indexing}>
+            <span>＋</span>
+            <span>Choose another folder</span>
           </button>
         </div>
+
+        <footer class="wizard-footer">
+          <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(1)} disabled={indexing}>
+            Back
+          </button>
+          <span class:error={Boolean(setupError)}>{setupError || "You can add more folders later."}</span>
+          <button class="wizard-primary" type="button" onclick={continueSetup} disabled={roots.length === 0 || indexing}>
+            Continue
+          </button>
+        </footer>
       {:else}
-        <div class="setup-footer">
-          <span class:error={Boolean(setupError)}>
-            {setupError || "Ready to build the local search index."}
-          </span>
-          <button
-            class="start-indexing"
-            type="button"
-            onclick={finishSetup}
-            disabled={roots.length === 0}
-          >
-            Build index
-          </button>
+        <div class="wizard-page wizard-review">
+          <div class="wizard-page-heading">
+            <div>
+              <div class="wizard-step-label">STEP 3</div>
+              <h1>Ready to build</h1>
+              <p>LookPlox will create a local index for these folders.</p>
+            </div>
+          </div>
+
+          <div class="review-card">
+            <div class="review-card-heading">
+              <span>Folders to index</span>
+              <span>{roots.length}</span>
+            </div>
+            <div class="review-list">
+              {#each roots as root}
+                <div class="review-row">
+                  <span class="folder-mark" aria-hidden="true">⌑</span>
+                  <span class="root-path">{root}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+
+          <div class="review-note">
+            <strong>What happens next</strong>
+            <span>The first scan may take a little while. You can cancel it, and your folders can be changed later in Settings.</span>
+          </div>
         </div>
+
+        {#if indexing}
+          <div class="indexing-status wizard-indexing">
+            <div class="progress-track"><div class="progress-indicator"></div></div>
+            <div class="status-text">
+              <span>{cancelRequested ? "Canceling…" : "Building search index…"}</span>
+              <span>{indexedCount.toLocaleString()} files scanned</span>
+            </div>
+            <button class="cancel-indexing" type="button" onclick={cancelIndexing} disabled={cancelRequested}>
+              {cancelRequested ? "Canceling…" : "Cancel"}
+            </button>
+          </div>
+        {/if}
+
+        {#if !indexing}
+          <footer class="wizard-footer">
+            <button class="wizard-secondary" type="button" onclick={() => goToSetupStep(2)}>
+              Back
+            </button>
+            <span class:error={Boolean(setupError)}>{setupError || "Ready to build the local search index."}</span>
+            <button class="wizard-primary" type="button" onclick={finishSetup} disabled={roots.length === 0}>
+              Build index
+            </button>
+          </footer>
+        {/if}
       {/if}
     </section>
   </main>
