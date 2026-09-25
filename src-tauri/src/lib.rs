@@ -24,8 +24,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 use walkdir::WalkDir;
 
 use platform::{
-  application_extension_trimmed, configure_main_window, create_application_preview,
-  discover_applications, is_application_container, is_application_path,
+  application_extension_trimmed, bytes_to_data_url, configure_main_window,
+  create_application_preview, discover_applications, is_application_container,
+  is_application_path,
   is_inside_application_container, open_path as platform_open_path, should_walk_entry,
   ApplicationEntry,
 };
