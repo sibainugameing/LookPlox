@@ -1071,6 +1071,8 @@
         >
           {cancelRequested ? "Canceling…" : "Cancel indexing"}
         </button>
+      </section>
+    </main>
   {:else if setupMode}
     <main class="setup-shell">
       <section class="setup-card setup-wizard" aria-label="LookPlox initial setup">
