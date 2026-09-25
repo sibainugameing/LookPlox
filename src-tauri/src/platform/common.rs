@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -61,4 +62,8 @@ pub(crate) fn discover_applications_from_roots(
   }
 
   entries
+}
+
+pub(crate) fn bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
+  format!("data:{mime};base64,{}", BASE64_STANDARD.encode(bytes))
 }
