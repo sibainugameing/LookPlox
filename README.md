@@ -86,4 +86,4 @@ Indexing can be canceled from the first-run setup screen or from Settings.
 
 GitHub Actions runs the frontend build, Rust tests, and a Tauri build without bundling on macOS, Windows, and Linux.
 
-Platform-specific Tauri configuration is kept in files such as `src-tauri/tauri.macos.conf.json`, while the base `tauri.conf.json` remains platform-neutral.
+Native OS-specific behavior is isolated under `src-tauri/src/platform/`. The base Tauri configuration keeps the macOS private-API feature flag required by the macOS window implementation.
