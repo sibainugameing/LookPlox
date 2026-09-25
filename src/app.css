@@ -1434,3 +1434,317 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 :root:not([data-theme="light"]) .result-preview {
   background: rgba(255, 255, 255, 0.04);
 }
+
+
+/* Initial setup wizard */
+.setup-wizard {
+  width: 760px;
+  box-sizing: border-box;
+}
+.wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 26px 16px;
+  border-bottom: 1px solid rgba(70, 70, 74, 0.08);
+}
+.wizard-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.wizard-step {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 1px solid rgba(70, 70, 74, 0.16);
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(45, 45, 50, 0.42);
+  font-size: 10px;
+  font-weight: 700;
+}
+.wizard-step.active {
+  background: rgba(45, 45, 50, 0.88);
+  border-color: rgba(45, 45, 50, 0.88);
+  color: white;
+}
+.wizard-step.done {
+  background: rgba(45, 45, 50, 0.12);
+  color: rgba(45, 45, 50, 0.72);
+}
+.wizard-line {
+  width: 26px;
+  height: 1px;
+  background: rgba(70, 70, 74, 0.12);
+}
+.wizard-page {
+  min-height: 350px;
+  padding: 30px 34px 26px;
+  box-sizing: border-box;
+}
+.wizard-welcome {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+.wizard-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  margin-bottom: 16px;
+  border-radius: 16px;
+  background: rgba(50, 50, 54, 0.08);
+  color: rgba(40, 40, 44, 0.78);
+}
+.wizard-icon span {
+  font-size: 31px;
+  line-height: 1;
+  transform: translateY(-2px);
+}
+.wizard-page h1 {
+  margin: 0;
+  color: rgba(30, 30, 33, 0.92);
+  font-size: 24px;
+  letter-spacing: -0.025em;
+}
+.wizard-lead {
+  max-width: 460px;
+  margin: 10px 0 26px;
+  color: rgba(45, 45, 50, 0.58);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.wizard-points {
+  width: min(100%, 500px);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.wizard-points > div {
+  min-height: 82px;
+  padding: 14px 12px;
+  box-sizing: border-box;
+  border: 1px solid rgba(70, 70, 74, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.28);
+  text-align: left;
+}
+.wizard-points strong,
+.wizard-points span {
+  display: block;
+}
+.wizard-points strong {
+  margin-bottom: 5px;
+  color: rgba(35, 35, 38, 0.78);
+  font-size: 10px;
+}
+.wizard-points span {
+  color: rgba(45, 45, 50, 0.48);
+  font-size: 9px;
+  line-height: 1.4;
+}
+.wizard-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.wizard-step-label {
+  margin-bottom: 5px;
+  color: rgba(45, 45, 50, 0.38);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.wizard-page-heading p {
+  margin: 7px 0 0;
+  color: rgba(45, 45, 50, 0.50);
+  font-size: 11px;
+}
+.wizard-empty {
+  display: grid;
+  min-height: 92px;
+  place-content: center;
+  justify-items: center;
+  border: 1px dashed rgba(70, 70, 74, 0.14);
+  border-radius: 12px;
+  color: rgba(45, 45, 50, 0.45);
+}
+.wizard-empty strong {
+  color: rgba(35, 35, 38, 0.66);
+  font-size: 11px;
+}
+.wizard-empty span {
+  margin-top: 4px;
+  font-size: 10px;
+}
+.wizard-roots-list {
+  max-height: 132px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.wizard-quick-folders {
+  margin-top: 13px;
+}
+.wizard-add-folder {
+  margin-top: 9px;
+}
+.wizard-review {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.review-card {
+  overflow: hidden;
+  border: 1px solid rgba(70, 70, 74, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.review-card-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(70, 70, 74, 0.07);
+  color: rgba(35, 35, 38, 0.60);
+  font-size: 10px;
+  font-weight: 700;
+}
+.review-list {
+  max-height: 165px;
+  overflow-y: auto;
+}
+.review-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 0 14px;
+  box-sizing: border-box;
+}
+.review-row + .review-row {
+  border-top: 1px solid rgba(70, 70, 74, 0.055);
+}
+.review-note {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: rgba(60, 60, 65, 0.045);
+}
+.review-note strong {
+  color: rgba(35, 35, 38, 0.65);
+  font-size: 10px;
+}
+.review-note span {
+  color: rgba(45, 45, 50, 0.48);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.wizard-footer {
+  display: flex;
+  align-items: center;
+  min-height: 62px;
+  gap: 12px;
+  padding: 12px 26px;
+  box-sizing: border-box;
+  border-top: 1px solid rgba(70, 70, 74, 0.08);
+}
+.wizard-footer > span {
+  flex: 1;
+  color: rgba(45, 45, 50, 0.40);
+  font-size: 10px;
+}
+.wizard-secondary,
+.wizard-primary {
+  min-width: 92px;
+  height: 34px;
+  padding: 0 15px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wizard-secondary {
+  border: 1px solid rgba(70, 70, 74, 0.12);
+  background: transparent;
+  color: rgba(45, 45, 50, 0.62);
+}
+.wizard-primary {
+  border: 1px solid rgba(40, 40, 44, 0.88);
+  background: rgba(40, 40, 44, 0.88);
+  color: white;
+}
+.wizard-primary:disabled,
+.wizard-secondary:disabled,
+.wizard-step:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.wizard-indexing {
+  margin: 0 26px 12px;
+}
+
+:root:not([data-theme="light"]) .wizard-header {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+:root:not([data-theme="light"]) .wizard-step {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(235, 238, 242, 0.48);
+}
+:root:not([data-theme="light"]) .wizard-step.active {
+  background: rgba(245, 246, 248, 0.88);
+  border-color: rgba(245, 246, 248, 0.88);
+  color: rgba(25, 25, 28, 0.90);
+}
+:root:not([data-theme="light"]) .wizard-step.done {
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(235, 238, 242, 0.72);
+}
+:root:not([data-theme="light"]) .wizard-line {
+  background: rgba(255, 255, 255, 0.14);
+}
+:root:not([data-theme="light"]) .wizard-icon {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(245, 246, 248, 0.78);
+}
+:root:not([data-theme="light"]) .wizard-page h1 {
+  color: rgba(245, 246, 248, 0.92);
+}
+:root:not([data-theme="light"]) .wizard-lead,
+:root:not([data-theme="light"]) .wizard-page-heading p,
+:root:not([data-theme="light"]) .wizard-points span,
+:root:not([data-theme="light"]) .wizard-empty span,
+:root:not([data-theme="light"]) .review-note span {
+  color: rgba(225, 229, 235, 0.54);
+}
+:root:not([data-theme="light"]) .wizard-points > div,
+:root:not([data-theme="light"]) .review-card {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+:root:not([data-theme="light"]) .wizard-points strong,
+:root:not([data-theme="light"]) .wizard-empty strong,
+:root:not([data-theme="light"]) .review-note strong,
+:root:not([data-theme="light"]) .review-card-heading {
+  color: rgba(238, 241, 245, 0.72);
+}
+:root:not([data-theme="light"]) .wizard-step-label,
+:root:not([data-theme="light"]) .wizard-footer > span {
+  color: rgba(225, 229, 235, 0.40);
+}
+:root:not([data-theme="light"]) .wizard-secondary {
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(235, 238, 242, 0.70);
+}
+:root:not([data-theme="light"]) .wizard-primary {
+  border-color: rgba(245, 246, 248, 0.88);
+  background: rgba(245, 246, 248, 0.88);
+  color: rgba(25, 25, 28, 0.90);
+}
