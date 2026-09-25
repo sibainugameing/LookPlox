@@ -131,7 +131,7 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 .setup-card {
   box-sizing: border-box;
   width: 100%;
-  min-height: 444px;
+  min-height: 504px;
   padding: 28px;
   border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 28px;
@@ -140,22 +140,142 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
   backdrop-filter: blur(30px) saturate(140%);
   -webkit-backdrop-filter: blur(30px) saturate(140%);
 }
+.setup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.setup-title-block { min-width: 0; flex: 1; }
 .setup-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: rgba(60, 60, 64, 0.44); }
 .setup-header h1 { margin: 7px 0 6px; font-size: 25px; line-height: 1.15; letter-spacing: -0.025em; }
 .setup-header p { max-width: 600px; margin: 0; color: rgba(60, 60, 64, 0.58); font-size: 13px; line-height: 1.5; }
-.roots-panel { margin-top: 22px; }
-.roots-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 12px; font-weight: 650; color: rgba(40, 40, 44, 0.68); }
+.setup-badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 250px;
+  padding-top: 2px;
+}
+.setup-badges span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(60, 60, 65, 0.07);
+  color: rgba(40, 40, 44, 0.62);
+  font-size: 10px;
+  font-weight: 650;
+}
+.setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 212px;
+  gap: 18px;
+  margin-top: 22px;
+}
+.roots-panel { margin-top: 0; }
+.roots-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(40, 40, 44, 0.68);
+}
+.roots-heading > div { display: grid; gap: 2px; }
+.roots-subtitle { font-size: 10px; font-weight: 500; color: rgba(60, 60, 64, 0.42); }
 .root-count { min-width: 22px; padding: 3px 7px; box-sizing: border-box; border-radius: 999px; background: rgba(60, 60, 65, 0.08); text-align: center; font-size: 11px; color: rgba(40, 40, 44, 0.54); }
-.roots-list { display: grid; gap: 6px; max-height: 142px; overflow-y: auto; padding-right: 2px; }
+.roots-list { display: grid; gap: 6px; max-height: 162px; overflow-y: auto; padding-right: 2px; }
 .root-row { display: flex; align-items: center; gap: 9px; min-height: 39px; padding: 0 9px 0 11px; box-sizing: border-box; border-radius: 11px; background: rgba(255, 255, 255, 0.38); }
-.folder-mark { flex: 0 0 auto; font-size: 14px; color: rgba(50, 50, 54, 0.44); }
+.folder-mark { display: grid; width: 18px; height: 18px; flex: 0 0 auto; place-items: center; color: rgba(50, 50, 54, 0.44); }
+.folder-mark svg { width: 17px; height: 17px; }
 .root-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: rgba(35, 35, 38, 0.76); }
 .remove-root { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px; background: transparent; color: rgba(45, 45, 48, 0.48); cursor: pointer; font-size: 18px; line-height: 1; }
 .remove-root:hover { background: rgba(60, 60, 65, 0.08); }
 .remove-root:disabled, .add-folder:disabled, .start-indexing:disabled, .cancel-indexing:disabled { cursor: default; opacity: 0.42; }
-.empty-roots { display: grid; min-height: 62px; place-items: center; box-sizing: border-box; border: 1px dashed rgba(70, 70, 74, 0.16); border-radius: 13px; color: rgba(70, 70, 74, 0.42); font-size: 12px; }
+.empty-roots {
+  display: grid;
+  min-height: 104px;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  box-sizing: border-box;
+  border: 1px dashed rgba(70, 70, 74, 0.16);
+  border-radius: 13px;
+  color: rgba(70, 70, 74, 0.48);
+  font-size: 11px;
+  text-align: center;
+}
+.empty-roots-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 1px;
+  border-radius: 9px;
+  background: rgba(60, 60, 65, 0.07);
+  font-size: 18px;
+  color: rgba(50, 50, 54, 0.50);
+}
+.empty-roots strong { font-size: 12px; font-weight: 650; color: rgba(40, 40, 44, 0.64); }
+.empty-roots span { max-width: 340px; line-height: 1.35; }
 .add-folder { display: inline-flex; align-items: center; gap: 7px; margin-top: 9px; padding: 8px 10px; border-radius: 10px; background: rgba(60, 60, 65, 0.07); color: rgba(35, 35, 38, 0.75); cursor: pointer; font-size: 12px; font-weight: 600; }
 .add-folder:hover { background: rgba(60, 60, 65, 0.11); }
+.setup-guide {
+  padding: 13px 14px 14px;
+  border: 1px solid rgba(70, 70, 74, 0.08);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.setup-guide-heading {
+  margin-bottom: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(40, 40, 44, 0.66);
+}
+.setup-guide-item {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.setup-guide-item + .setup-guide-item {
+  margin-top: 12px;
+}
+.setup-guide-number {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(60, 60, 65, 0.07);
+  color: rgba(45, 45, 48, 0.58);
+  font-size: 9px;
+  font-weight: 700;
+}
+.setup-guide-item div {
+  display: grid;
+  gap: 2px;
+}
+.setup-guide-item strong {
+  font-size: 10px;
+  font-weight: 650;
+  color: rgba(35, 35, 38, 0.78);
+}
+.setup-guide-item span {
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(60, 60, 64, 0.52);
+}
+.setup-guide-note {
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(70, 70, 74, 0.08);
+  font-size: 9px;
+  line-height: 1.4;
+  color: rgba(60, 60, 64, 0.48);
+}
 .setup-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; min-height: 40px; font-size: 11px; color: rgba(60, 60, 64, 0.44); }
 .setup-footer > span { min-width: 0; flex: 1; line-height: 1.4; }
 .setup-footer > span.error { color: rgba(160, 46, 46, 0.78); }
@@ -824,6 +944,35 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
     color: rgba(225, 229, 235, 0.84);
   }
   
+  :root:not([data-theme="light"]) .setup-badges span,
+  :root:not([data-theme="light"]) .roots-subtitle,
+  :root:not([data-theme="light"]) .setup-guide-item span,
+  :root:not([data-theme="light"]) .setup-guide-note {
+    color: rgba(221, 225, 232, 0.68);
+  }
+  
+  :root:not([data-theme="light"]) .setup-guide {
+    background: rgba(255, 255, 255, 0.055);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+  
+  :root:not([data-theme="light"]) .setup-badges span,
+  :root:not([data-theme="light"]) .setup-guide-number,
+  :root:not([data-theme="light"]) .empty-roots-icon {
+    background: rgba(255, 255, 255, 0.09);
+    color: rgba(244, 246, 249, 0.78);
+  }
+  
+  :root:not([data-theme="light"]) .setup-guide-heading,
+  :root:not([data-theme="light"]) .setup-guide-item strong,
+  :root:not([data-theme="light"]) .empty-roots strong {
+    color: rgba(248, 249, 251, 0.92);
+  }
+  
+  :root:not([data-theme="light"]) .setup-guide-note {
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  
   :root:not([data-theme="light"]) .name,
   :root:not([data-theme="light"]) .root-path,
   :root:not([data-theme="light"]) .settings-title,
@@ -998,6 +1147,35 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 :root[data-theme="dark"] .roots-heading,
 :root[data-theme="dark"] .settings-section-heading {
   color: rgba(225, 229, 235, 0.84);
+}
+
+:root[data-theme="dark"] .setup-badges span,
+:root[data-theme="dark"] .roots-subtitle,
+:root[data-theme="dark"] .setup-guide-item span,
+:root[data-theme="dark"] .setup-guide-note {
+  color: rgba(221, 225, 232, 0.68);
+}
+
+:root[data-theme="dark"] .setup-guide {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] .setup-badges span,
+:root[data-theme="dark"] .setup-guide-number,
+:root[data-theme="dark"] .empty-roots-icon {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(244, 246, 249, 0.78);
+}
+
+:root[data-theme="dark"] .setup-guide-heading,
+:root[data-theme="dark"] .setup-guide-item strong,
+:root[data-theme="dark"] .empty-roots strong {
+  color: rgba(248, 249, 251, 0.92);
+}
+
+:root[data-theme="dark"] .setup-guide-note {
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 :root[data-theme="dark"] .name,
