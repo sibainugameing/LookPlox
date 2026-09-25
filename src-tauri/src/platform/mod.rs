@@ -15,7 +15,8 @@ pub(crate) use common::{
 #[cfg(target_os = "linux")]
 pub(crate) use linux::{
   configure_main_window, create_application_preview, discover_applications,
-  is_application_path, open_path,
+  is_application_container, is_application_path, is_inside_application_container,
+  open_path, should_walk_entry,
 };
 
 #[cfg(target_os = "macos")]
