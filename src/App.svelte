@@ -1020,9 +1020,8 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if setupMode}
-  {#if indexing}
-    <main class="indexing-shell">
+{#if indexing}
+  <main class="indexing-shell">
       <section class="setup-card indexing-card" aria-label="LookPlox indexing">
         <div class="indexing-kicker">LOOKPLOX</div>
 
@@ -1031,9 +1030,11 @@
           <span class="indexing-glyph">⌕</span>
         </div>
 
-        <h1>Building your search index</h1>
+        <h1>{setupMode ? "Building your search index" : "Updating your search index"}</h1>
         <p class="indexing-lead">
-          LookPlox is scanning the folders you selected and building a local search index.
+          {setupMode
+            ? "LookPlox is scanning the folders you selected and building a local search index."
+            : "LookPlox is scanning the selected folders and updating the local search index."}
         </p>
 
         <div class="indexing-summary">
@@ -1070,9 +1071,7 @@
         >
           {cancelRequested ? "Canceling…" : "Cancel indexing"}
         </button>
-      </section>
-    </main>
-  {:else}
+  {:else if setupMode}
     <main class="setup-shell">
       <section class="setup-card setup-wizard" aria-label="LookPlox initial setup">
         <header class="wizard-header">
@@ -1418,7 +1417,6 @@
         {/if}
       </section>
     </main>
-  {/if}
 {:else if viewMode === "config"}
   <main class="config-shell">
     <section class="settings-card" aria-label="LookPlox settings">
