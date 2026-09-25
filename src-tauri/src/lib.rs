@@ -703,7 +703,7 @@ impl SearchEngine {
     // macOS .app bundles are directories on disk, but should appear as applications in search results.
     let is_dir = metadata.is_dir() && !is_app_bundle(path);
 
-    let mut writer = self
+    let writer = self
       .writer
       .lock()
       .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
