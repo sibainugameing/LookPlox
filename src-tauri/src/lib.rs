@@ -10,7 +10,7 @@ use std::sync::{
   atomic::{AtomicBool, AtomicUsize, Ordering},
   Arc, Mutex,
 };
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tantivy::collector::{DocSetCollector, TopDocs};
 use tantivy::doc;
 use tantivy::query::{AllQuery, BooleanQuery, Query, TermQuery};
@@ -25,7 +25,9 @@ use walkdir::WalkDir;
 
 use platform::{
   application_extension_trimmed, configure_main_window, create_application_preview,
-  discover_applications, is_application_path, open_path as platform_open_path, ApplicationEntry,
+  discover_applications, is_application_container, is_application_path,
+  is_inside_application_container, open_path as platform_open_path, should_walk_entry,
+  ApplicationEntry,
 };
 
 pub struct AppState {
@@ -376,15 +378,6 @@ fn edit_distance(left: &str, right: &str) -> usize {
   previous[right_chars.len()]
 }
 
-fn application_extension_trimmed(name: &str) -> &str {
-  for suffix in [".app", ".exe", ".lnk", ".desktop"] {
-    if name.len() > suffix.len() && name.to_ascii_lowercase().ends_with(suffix) {
-      return &name[..name.len() - suffix.len()];
-    }
-  }
-
-  name
-}
 
 impl SearchEngine {
   pub fn open(index_dir: &Path) -> tantivy::Result<Self> {
@@ -473,7 +466,7 @@ impl SearchEngine {
 
     let path_string = path.to_string_lossy().into_owned();
     // macOS .app bundles are directories on disk, but should appear as applications in search results.
-    let is_dir = metadata.is_dir() && !is_app_bundle(path);
+    let is_dir = metadata.is_dir() && !is_application_container(path);
 
     let writer = self
       .writer
@@ -1102,7 +1095,7 @@ fn process_event(
         changed = true;
       }
     } else if path.is_dir() {
-      if is_inside_app_bundle(&path) {
+      if is_inside_application_container(&path) {
         continue;
       }
 
@@ -1112,7 +1105,7 @@ fn process_event(
         changed = true;
       }
 
-      if is_app_bundle(&path) {
+      if is_application_container(&path) {
         continue;
       }
 
