@@ -10,7 +10,7 @@ mod unsupported;
 
 pub(crate) use common::{
   application_extension_trimmed, bytes_to_data_url, discover_applications_from_roots,
-  ApplicationEntry,
+  ApplicationCache, ApplicationEntry,
 };
 
 #[cfg(target_os = "linux")]
