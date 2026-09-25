@@ -307,6 +307,7 @@ pub struct SuggestedFolder {
   pub path: String,
 }
 
+#[tauri::command]
 fn get_suggested_folders() -> Vec<SuggestedFolder> {
   let candidates = [
     ("desktop", "Desktop", dirs::desktop_dir()),
