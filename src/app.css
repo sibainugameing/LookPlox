@@ -222,6 +222,75 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 .empty-roots span { max-width: 340px; line-height: 1.35; }
 .add-folder { display: inline-flex; align-items: center; gap: 7px; margin-top: 9px; padding: 8px 10px; border-radius: 10px; background: rgba(60, 60, 65, 0.07); color: rgba(35, 35, 38, 0.75); cursor: pointer; font-size: 12px; font-weight: 600; }
 .add-folder:hover { background: rgba(60, 60, 65, 0.11); }
+.quick-folders {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(70, 70, 74, 0.08);
+}
+.quick-folders-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(40, 40, 44, 0.60);
+}
+.quick-folders-heading > span:last-child {
+  font-weight: 500;
+  color: rgba(60, 60, 64, 0.40);
+}
+.quick-folders-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.quick-folder {
+  display: grid;
+  min-width: 0;
+  min-height: 57px;
+  grid-template-rows: 20px auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 5px;
+  box-sizing: border-box;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.34);
+  color: rgba(35, 35, 38, 0.70);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 650;
+}
+.quick-folder:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.60);
+}
+.quick-folder:disabled {
+  cursor: default;
+}
+.quick-folder.covered {
+  background: rgba(60, 60, 65, 0.10);
+  color: rgba(35, 35, 38, 0.50);
+}
+.quick-folder-icon {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: rgba(50, 50, 54, 0.50);
+}
+.quick-folder-icon svg {
+  width: 17px;
+  height: 17px;
+}
+.quick-folder-state {
+  font-size: 8px;
+  font-weight: 500;
+  color: rgba(60, 60, 64, 0.40);
+}
+.quick-folder.covered .quick-folder-state {
+  color: rgba(50, 50, 54, 0.56);
+}
 .setup-guide {
   padding: 13px 14px 14px;
   border: 1px solid rgba(70, 70, 74, 0.08);
@@ -947,8 +1016,36 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
   :root:not([data-theme="light"]) .setup-badges span,
   :root:not([data-theme="light"]) .roots-subtitle,
   :root:not([data-theme="light"]) .setup-guide-item span,
-  :root:not([data-theme="light"]) .setup-guide-note {
+  :root:not([data-theme="light"]) .setup-guide-note,
+  :root:not([data-theme="light"]) .quick-folders-heading,
+  :root:not([data-theme="light"]) .quick-folder-state {
     color: rgba(221, 225, 232, 0.68);
+  }
+  
+  :root:not([data-theme="light"]) .quick-folders {
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  
+  :root:not([data-theme="light"]) .quick-folders-heading > span:last-child {
+    color: rgba(221, 225, 232, 0.54);
+  }
+  
+  :root:not([data-theme="light"]) .quick-folder {
+    background: rgba(255, 255, 255, 0.055);
+    color: rgba(248, 249, 251, 0.88);
+  }
+  
+  :root:not([data-theme="light"]) .quick-folder:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.10);
+  }
+  
+  :root:not([data-theme="light"]) .quick-folder.covered {
+    background: rgba(255, 255, 255, 0.10);
+    color: rgba(221, 225, 232, 0.56);
+  }
+  
+  :root:not([data-theme="light"]) .quick-folder-icon {
+    color: rgba(244, 246, 249, 0.72);
   }
   
   :root:not([data-theme="light"]) .setup-guide {
@@ -1152,8 +1249,36 @@ input::placeholder { color: rgba(45, 45, 50, 0.58); }
 :root[data-theme="dark"] .setup-badges span,
 :root[data-theme="dark"] .roots-subtitle,
 :root[data-theme="dark"] .setup-guide-item span,
-:root[data-theme="dark"] .setup-guide-note {
+:root[data-theme="dark"] .setup-guide-note,
+:root[data-theme="dark"] .quick-folders-heading,
+:root[data-theme="dark"] .quick-folder-state {
   color: rgba(221, 225, 232, 0.68);
+}
+
+:root[data-theme="dark"] .quick-folders {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+:root[data-theme="dark"] .quick-folders-heading > span:last-child {
+  color: rgba(221, 225, 232, 0.54);
+}
+
+:root[data-theme="dark"] .quick-folder {
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(248, 249, 251, 0.88);
+}
+
+:root[data-theme="dark"] .quick-folder:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+:root[data-theme="dark"] .quick-folder.covered {
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(221, 225, 232, 0.56);
+}
+
+:root[data-theme="dark"] .quick-folder-icon {
+  color: rgba(244, 246, 249, 0.72);
 }
 
 :root[data-theme="dark"] .setup-guide {
