@@ -10,9 +10,9 @@ use std::sync::{
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use tantivy::collector::TopDocs;
+use tantivy::collector::{DocSetCollector, TopDocs};
 use tantivy::doc;
-use tantivy::query::{BooleanQuery, MatchAllDocsQuery, Query, TermQuery};
+use tantivy::query::{AllQuery, BooleanQuery, Query, TermQuery};
 use tantivy::schema::{
   Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
 };
@@ -674,7 +674,7 @@ impl SearchEngine {
   }
 
   pub fn clear(&self) -> tantivy::Result<()> {
-    let mut writer = self
+    let writer = self
       .writer
       .lock()
       .map_err(|_| tantivy::TantivyError::SystemError("writer lock poisoned".into()))?;
@@ -751,11 +751,11 @@ impl SearchEngine {
     // metacharacters, and Tantivy's regex parser rejects some escaped forms.
     // Instead, inspect the stored path values and remove exact descendants.
     let searcher = self.reader.searcher();
-    let top_docs = searcher
-      .search(&MatchAllDocsQuery, &TopDocs::with_limit(1_000_000))
+    let matching_docs = searcher
+      .search(&AllQuery, &DocSetCollector)
       .map_err(|error| tantivy::TantivyError::InvalidArgument(error.to_string()))?;
 
-    let mut paths_to_remove = HashSet::<String>::with_capacity(top_docs.len() + 2);
+    let mut paths_to_remove = HashSet::<String>::with_capacity(matching_docs.len() + 2);
 
     if !raw_path.is_empty() {
       paths_to_remove.insert(raw_path);
@@ -765,7 +765,7 @@ impl SearchEngine {
       paths_to_remove.insert(normalized_path);
     }
 
-    for (_, address) in top_docs {
+    for address in matching_docs {
       let document: TantivyDocument = searcher.doc::<TantivyDocument>(address)?;
 
       let Some(value) = document
