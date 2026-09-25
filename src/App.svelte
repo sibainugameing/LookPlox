@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { LogicalSize } from "@tauri-apps/api/dpi";
+  import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
   import { open } from "@tauri-apps/plugin-dialog";
 
   type SearchResult = {
@@ -94,6 +94,15 @@
   let storageError = "";
 
   const windowHandle = getCurrentWindow();
+  const WINDOW_CENTER_Y_OFFSET_PX = -56;
+
+  async function centerWindowSlightlyAbove() {
+    await windowHandle.center();
+    const position = await windowHandle.outerPosition();
+    await windowHandle.setPosition(
+      new PhysicalPosition(position.x, position.y + WINDOW_CENTER_Y_OFFSET_PX),
+    );
+  }
 
   function normalizeSettings(parsed: Partial<Settings>): Settings {
     return {
@@ -301,18 +310,22 @@
         : 12 + 68 + 10 + 16 + visibleResults * 56 + 10;
 
     await windowHandle.setSize(new LogicalSize(760, height));
+    await centerWindowSlightlyAbove();
   }
 
   async function resizeSetupWindow() {
     await windowHandle.setSize(new LogicalSize(760, 480));
+    await centerWindowSlightlyAbove();
   }
 
   async function resizeConfigWindow() {
     await windowHandle.setSize(new LogicalSize(760, 600));
+    await centerWindowSlightlyAbove();
   }
 
   async function resizeHelpWindow() {
     await windowHandle.setSize(new LogicalSize(760, 360));
+    await centerWindowSlightlyAbove();
   }
 
   function comparablePath(path: string) {
@@ -434,7 +447,6 @@
 
             if (finishSetupWhenDone) {
               await resizeSearchWindow();
-              await windowHandle.center();
               await windowHandle.setFocus();
               await tick();
               input?.focus();
@@ -590,7 +602,6 @@
     storageError = "";
     await loadStorageLocations();
     await resizeConfigWindow();
-    await windowHandle.center();
     await windowHandle.setFocus();
   }
 
@@ -602,7 +613,6 @@
     commandMatches = [];
     selected = 0;
     await resizeHelpWindow();
-    await windowHandle.center();
     await windowHandle.setFocus();
   }
 
@@ -887,7 +897,6 @@
 
         if (setupMode) {
           await resizeSetupWindow();
-          await windowHandle.center();
           await windowHandle.setFocus();
         } else {
           await resizeSearchWindow(0);
@@ -914,7 +923,6 @@
         setupMode = true;
         setupError = "LookPlox could not load its setup state: " + String(error);
         await resizeSetupWindow();
-        await windowHandle.center();
         await windowHandle.setFocus();
       }
     };
