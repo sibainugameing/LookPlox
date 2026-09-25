@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use base64::Engine as _;
 use tauri::WebviewWindow;
 use window_vibrancy::{
   apply_liquid_glass, apply_vibrancy, LiquidGlassOptions, NSGlassEffectViewStyle,
@@ -11,7 +10,7 @@ use window_vibrancy::{
 };
 
 use super::{
-  discover_applications_from_roots, ApplicationEntry,
+  bytes_to_data_url, discover_applications_from_roots, ApplicationEntry,
 };
 
 pub(crate) fn is_application_path(path: &Path) -> bool {
@@ -285,10 +284,7 @@ fn create_icns_preview(path: &Path, output_dir: &Path) -> Result<Option<String>,
   }
 
   let bytes = std::fs::read(&output_path).map_err(|error| error.to_string())?;
-  Ok(Some(format!(
-    "data:image/png;base64,{}",
-    base64::engine::general_purpose::STANDARD.encode(bytes)
-  )))
+  Ok(Some(bytes_to_data_url(&bytes, "image/png")))
 }
 
 fn create_qlmanage_preview(path: &Path, output_dir: &Path) -> Result<Option<String>, String> {
@@ -329,10 +325,7 @@ fn create_qlmanage_preview(path: &Path, output_dir: &Path) -> Result<Option<Stri
   match preview_path {
     Some(preview_path) => {
       let bytes = std::fs::read(preview_path).map_err(|error| error.to_string())?;
-      Ok(Some(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-      )))
+      Ok(Some(bytes_to_data_url(&bytes, "image/png")))
     }
     None => Ok(None),
   }
