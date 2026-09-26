@@ -1326,7 +1326,7 @@
               <label class="settings-row">
                 <span class="settings-copy">
                   <span class="settings-title">Preview application icons</span>
-                  <span class="settings-description">Show native application icons for supported app bundles.</span>
+                  <span class="settings-description">Show native application icons where the platform provides them.</span>
                 </span>
                 <input
                   class="settings-switch"
